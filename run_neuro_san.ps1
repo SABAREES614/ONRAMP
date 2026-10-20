@@ -1,22 +1,12 @@
-# PowerShell script to launch Neuro-SAN with .env environment variables loaded
-Write-Host "Loading .env configuration..."
-if (Test-Path .env) {
-    Get-Content .env | ForEach-Object {
-        $line = $_.Trim()
-        if ($line -and -not $line.StartsWith('#') -and $line.Contains('=')) {
-            $parts = $line.Split('=', 2)
-            $varName = $parts[0].Trim()
-            $varVal = $parts[1].Trim()
-            [System.Environment]::SetEnvironmentVariable($varName, $varVal)
-            $masked = if ($varName.ToLower().Contains("key") -and $varVal.Length -gt 8) { $varVal.Substring(0, 4) + "..." + $varVal.Substring($varVal.Length - 4) } else { $varVal }
-            Write-Host "  $varName = $masked"
-        }
-    }
-}
+# Start the Neuro-SAN server with the ONRAMP agent network.
+# Run from the project root in its own PowerShell terminal.
+# Prerequisite: uv on PATH (installer puts it at $HOME\.local\bin).
 
-$env:PYTHONPATH = "src"
 $env:AGENT_MANIFEST_FILE = (Resolve-Path .\registries\manifest.hocon).Path
 $env:AGENT_TOOL_PATH = (Resolve-Path .\src).Path
 
-Write-Host "`nStarting Neuro-SAN server (host: 127.0.0.1, port: 8080, model: $env:ONRAMP_MODEL, provider: $env:ONRAMP_LLM_CLASS)..."
-.\.venv\Scripts\ns.exe run --server-only --server-host 127.0.0.1 --server-http-port 8080
+Write-Host "Starting Neuro-SAN server (127.0.0.1:8080) with ONRAMP network..."
+Write-Host "  manifest : $env:AGENT_MANIFEST_FILE"
+Write-Host "  tool path: $env:AGENT_TOOL_PATH"
+
+uv run ns run --server-only --server-host 127.0.0.1 --server-http-port 8080

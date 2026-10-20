@@ -1,0 +1,5 @@
+# ONRAMP agent manifest. Only networks set to true are served by neuro-san.
+# Point the server at this file via AGENT_MANIFEST_FILE and set AGENT_TOOL_PATH=src.
+{
+    "onramp/onramp_onboarding.hocon": true
+}

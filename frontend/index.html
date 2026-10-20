@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ONRAMP · Client Onboarding Workbench · on neuro-san</title>
+<style>
+:root{
+  --bg:#070b14;--bg2:#0c1322;--panel:#111a2e;--panel2:#16213a;--line:#22304f;--text:#e6ecf8;--muted:#8fa0c0;--dim:#5d6d8e;
+  --a1:#5b8cff;--a2:#21d4b4;--a3:#b36bff;--warn:#ffb547;--bad:#ff5d73;--ok:#2fd27a;--info:#43c3ff;
+  --grad:linear-gradient(135deg,#5b8cff 0%,#b36bff 55%,#21d4b4 100%);
+  --shadow:0 8px 30px rgba(0,0,0,.35);--r:14px;
+}
+/* Light theme: flip backgrounds and text colours for readability. */
+body.light{
+  --bg:#eef2f9;--bg2:#e4ebf6;--panel:#ffffff;--panel2:#f2f6fc;--line:#d4ddec;
+  --text:#14203a;--muted:#55668a;--dim:#8494b5;
+  --a1:#2f6bff;--a2:#0bb79b;--a3:#8a46e0;--warn:#b9791a;--bad:#d23651;--ok:#1a9e57;--info:#1f8fc9;
+  --shadow:0 6px 20px rgba(20,32,58,.1);
+}
+body.light pre,body.light .log{background:#0d1426;color:#dfe8ff}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;overflow:hidden}
+a{color:var(--a1)}
+#app{display:flex;height:100vh}
+#side{width:264px;min-width:264px;background:var(--bg2);border-right:1px solid var(--line);display:flex;flex-direction:column;height:100vh}
+.brand{padding:18px 18px 14px;border-bottom:1px solid var(--line)}
+.brand .logo{display:flex;align-items:center;gap:10px}
+.brand .mark{width:36px;height:36px;border-radius:10px;background:var(--grad);display:grid;place-items:center;font-weight:800;color:#fff;font-size:15px;box-shadow:0 0 22px rgba(91,140,255,.45)}
+.brand h1{font-size:17px;letter-spacing:.5px}
+.brand small{display:block;color:var(--muted);font-size:11px}
+#nav{overflow-y:auto;flex:1;padding:8px 10px 20px}
+.navgrp{font-size:10.5px;text-transform:uppercase;letter-spacing:1.2px;color:var(--dim);margin:14px 8px 6px}
+.navi{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;cursor:pointer;color:var(--muted);font-size:13px;transition:.15s}
+.navi:hover{background:var(--panel);color:var(--text)}
+.navi.on{background:linear-gradient(90deg,rgba(91,140,255,.22),rgba(179,107,255,.08));color:var(--text);box-shadow:inset 3px 0 0 var(--a1)}
+.navi .n{width:22px;height:22px;border-radius:6px;background:var(--panel2);display:grid;place-items:center;font-size:10.5px;color:var(--muted);flex-shrink:0}
+.navi.on .n{background:var(--a1);color:#fff}
+.sidefoot{padding:12px 14px;border-top:1px solid var(--line);font-size:11px;color:var(--dim)}
+#main{flex:1;display:flex;flex-direction:column;min-width:0}
+#top{height:58px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 22px;background:var(--bg2)}
+#top .crumb{font-size:13px;color:var(--muted)}
+#top .crumb b{color:var(--text)}
+#top .sp{flex:1}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:11.5px;border:1px solid var(--line);background:var(--panel);color:var(--muted);white-space:nowrap}
+.pill.ok{color:var(--ok);border-color:rgba(47,210,122,.4)}
+.pill.warn{color:var(--warn);border-color:rgba(255,181,71,.4)}
+.pill.bad{color:var(--bad);border-color:rgba(255,93,115,.4)}
+.pill.info{color:var(--info);border-color:rgba(67,195,255,.4)}
+.pill.vio{color:var(--a3);border-color:rgba(179,107,255,.4)}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor;display:inline-block}
+.btn{border:1px solid var(--line);background:var(--panel);color:var(--text);padding:7px 13px;border-radius:9px;cursor:pointer;font-size:12.5px;font-family:inherit;transition:.15s}
+.btn:hover{border-color:var(--a1)}
+.btn.pri{background:var(--grad);border:none;color:#fff;font-weight:600}
+.btn.sm{padding:4px 9px;font-size:11.5px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+#view{flex:1;overflow-y:auto;padding:24px 28px 60px}
+.ph{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:18px;flex-wrap:wrap}
+.ph h2{font-size:24px;letter-spacing:.2px}
+.ph p{color:var(--muted);max-width:880px;margin-top:4px}
+.eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:var(--a2);font-weight:600}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(2,minmax(0,1fr))}.g3{grid-template-columns:repeat(3,minmax(0,1fr))}.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.g21{grid-template-columns:2fr 1fr}.g12{grid-template-columns:1fr 2fr}
+@media(max-width:1100px){.g3,.g4,.g21,.g12{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px;box-shadow:var(--shadow);min-width:0}
+.card h3{font-size:14.5px;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.card h4{font-size:13px;margin:10px 0 6px;color:var(--muted)}
+.kpi .v{font-size:28px;font-weight:700;letter-spacing:-.5px}
+.kpi .l{font-size:12px;color:var(--muted)}
+.grad-text{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+table{width:100%;border-collapse:collapse;font-size:12.8px}
+th{text-align:left;color:var(--muted);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.6px;padding:8px 10px;border-bottom:1px solid var(--line);background:var(--panel2)}
+td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere;word-break:break-word}
+td .mono,td.mono{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}
+.wrap{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}
+tr:hover td{background:rgba(91,140,255,.04)}
+.tag{display:inline-block;font-size:11px;padding:1px 8px;border-radius:6px;background:var(--panel2);border:1px solid var(--line);color:var(--muted);margin:1px 2px 1px 0}
+.bar{height:8px;border-radius:6px;background:var(--panel2);overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--grad);border-radius:6px;transition:width .6s}
+.muted{color:var(--muted)}.dim{color:var(--dim)}.ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}.info{color:var(--info)}.vio{color:var(--a3)}.teal{color:var(--a2)}
+.mono,pre,code{font-family:Consolas,"Cascadia Code","SF Mono",Menlo,monospace}
+pre{background:#050811;border:1px solid var(--line);border-radius:10px;padding:14px;overflow:auto;font-size:12px;line-height:1.55;color:#cfe0ff;max-height:520px;white-space:pre-wrap;word-break:break-word}
+input,select,textarea{font-family:inherit;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:8px 10px;font-size:13px;width:100%}
+label.f{display:block;font-size:11.5px;color:var(--muted);margin:10px 0 4px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.sep{height:1px;background:var(--line);margin:14px 0}
+.note{border-left:3px solid var(--a2);background:rgba(33,212,180,.07);padding:10px 14px;border-radius:0 10px 10px 0;color:var(--muted);font-size:12.8px;margin:12px 0}
+.note.w{border-color:var(--warn);background:rgba(255,181,71,.07)}
+.note.b{border-color:var(--bad);background:rgba(255,93,115,.07)}
+.lc{display:flex;align-items:center;gap:8px;padding:9px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);margin-bottom:6px}
+.lc.done{border-color:rgba(47,210,122,.45)}
+.lc.act{border-color:var(--a1);box-shadow:0 0 0 2px rgba(91,140,255,.2)}
+.lc.hold{border-color:rgba(255,181,71,.5)}
+.av{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0;background:var(--a1)}
+.slyrow{display:flex;justify-content:space-between;padding:6px 8px;border-radius:7px;font-family:Consolas,monospace;font-size:12px;margin-bottom:4px;background:var(--panel2)}
+.node{cursor:pointer}.edge{stroke:var(--line);stroke-width:1.6;fill:none}
+.toast{position:fixed;bottom:22px;right:22px;background:var(--panel);border:1px solid var(--a2);padding:10px 16px;border-radius:10px;box-shadow:var(--shadow);z-index:99;font-size:13px;display:none}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--a1);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
+@keyframes sp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div id="app">
+<aside id="side">
+  <div class="brand"><div class="logo"><div class="mark">OR</div><div><h1>ONRAMP</h1><small>Client onboarding workbench · on neuro-san</small></div></div></div>
+  <nav id="nav"></nav>
+  <div class="sidefoot">Local build · fictional clients · neuro-san is Apache-2.0, by Cognizant AI Lab</div>
+</aside>
+<main id="main">
+  <div id="top">
+    <div class="crumb" id="crumb"></div><div class="sp"></div>
+    <span class="pill info" id="nsPill"><span class="dot"></span>neuro-san: checking…</span>
+    <span class="pill" id="provPill">provider: —</span>
+    <button class="btn sm" id="themeBtn" onclick="toggleTheme()" title="Toggle dark/light">☀ Light</button>
+  </div>
+  <div id="view"></div>
+</main>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(t._h);t._h=setTimeout(()=>t.style.display='none',3200)}
+async function api(path,opts){const r=await fetch('/api'+path,Object.assign({headers:{'Content-Type':'application/json'}},opts||{}));let b=null;try{b=await r.json()}catch(e){}if(!r.ok){const msg=(b&&(b.detail&&b.detail.message||b.detail||b.error))||r.statusText;const e=new Error(typeof msg==='string'?msg:JSON.stringify(msg));e.body=b;e.status=r.status;throw e}return b}
+
+const AGENTS=[
+ {id:'onboarding_concierge',ab:'OC',c:'#5b8cff',role:'Front-man'},
+ {id:'deal_handover_agent',ab:'DH',c:'#43c3ff',role:'Specialist'},
+ {id:'document_intelligence_agent',ab:'DI',c:'#21d4b4',role:'Specialist'},
+ {id:'compliance_agent',ab:'CO',c:'#ffb547',role:'Specialist'},
+ {id:'legal_msa_validator',ab:'LG',c:'#b36bff',role:'Specialist'},
+ {id:'commercial_setup_agent',ab:'CB',c:'#ff7ab6',role:'Specialist'},
+ {id:'delivery_mobilisation_agent',ab:'DM',c:'#2fd27a',role:'Specialist'},
+ {id:'access_provisioning_agent',ab:'AP',c:'#7aa2ff',role:'Specialist'},
+ {id:'client_comms_agent',ab:'CC',c:'#43e0d0',role:'Specialist'}];
+const STAGES=['Deal handover','Document collection','Compliance & KYB','MSA/SOW validation','Commercial & billing','Mobilisation & access','Client kickoff','Hypercare to first value'];
+let STATE={cases:[],caseId:null};
+
+const PAGES=[
+ {id:'portfolio',grp:'Operate',title:'Portfolio',render:renderPortfolio},
+ {id:'case',grp:'Operate',title:'Case workspace',render:renderCase},
+ {id:'review',grp:'Operate',title:'Concierge review',render:renderReview},
+ {id:'lifecycle',grp:'Operate',title:'Lifecycle board',render:renderLifecycle},
+ {id:'humanreview',grp:'Operate',title:'Human review',render:renderHuman},
+ {id:'audit',grp:'Operate',title:'Audit history',render:renderAudit},
+ {id:'network',grp:'Network',title:'Agent network',render:renderNetwork},
+ {id:'architecture',grp:'Network',title:'Architecture',render:renderArchitecture},
+ {id:'settings',grp:'Configure',title:'Settings · API keys',render:renderSettings}];
+
+function buildNav(){let h='',g='';PAGES.forEach((p,i)=>{if(p.grp!==g){g=p.grp;h+=`<div class="navgrp">${g}</div>`}h+=`<div class="navi" data-id="${p.id}" onclick="go('${p.id}')"><span class="n">${i+1}</span>${p.title}</div>`});$('#nav').innerHTML=h}
+let CUR=null;
+async function go(id){const p=PAGES.find(x=>x.id===id)||PAGES[0];CUR=p.id;$$('.navi').forEach(n=>n.classList.toggle('on',n.dataset.id===p.id));$('#crumb').innerHTML=`${p.grp} › <b>${p.title}</b>`;const v=$('#view');v.innerHTML='<div class="card"><span class="spin"></span> Loading…</div>';try{await p.render(v)}catch(e){v.innerHTML=`<div class="card"><h3 class="bad">Could not load this page</h3><pre>${esc(e.message||e)}</pre></div>`}v.scrollTop=0;try{history.replaceState(null,'','#'+id)}catch(e){}}
+
+function ph(eb,t,p,right){return `<div class="ph"><div><div class="eyebrow">${eb}</div><h2>${t}</h2>${p?`<p>${esc(p)}</p>`:''}</div>${right||''}</div>`}
+function kpi(v,l,cls){return `<div class="card kpi"><div class="l">${l}</div><div class="v ${cls||''}">${v}</div></div>`}
+function resultPill(r){return r==='PASS'?'<span class="pill ok">PASS</span>':r==='REVIEW'?'<span class="pill warn">REVIEW</span>':'<span class="pill bad">BLOCK</span>'}
+function statusPill(s){const m={gate_clear:['ok','Checks clear'],approvable:['ok','Approvable']};return ''}
+
+/* ---------- Portfolio ---------- */
+async function renderPortfolio(v){const cases=await api('/cases');STATE.cases=cases;
+ const g=cases.filter(c=>c.summary.gate_clear).length,b=cases.filter(c=>c.summary.open_blocks>0).length,r=cases.length-g-b;
+ v.innerHTML=ph('Live tracker','Onboarding portfolio','Every closed-won deal in onboarding. Deterministic checks and a real Neuro-SAN Concierge review gate each kickoff. All starter clients are fictional.',
+   `<button class="btn pri" onclick="newCaseModal()">+ New closed-won case</button>`)
+ +`<div class="grid g4" style="margin-bottom:14px">${kpi(cases.length,'Active onboardings')}${kpi(g,'Checks clear','ok')}${kpi(b,'Blocked','bad')}${kpi(r,'Needs review','warn')}</div>
+ <div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>Client</th><th>Segment</th><th>TCV</th><th>Stage</th><th>Checks</th><th>Agent run</th><th>Owner</th></tr></thead><tbody>
+ ${cases.map(c=>{const s=c.summary;const chk=s.block?`<span class="pill bad">${s.open_blocks} block</span>`:s.open_reviews?`<span class="pill warn">${s.open_reviews} review</span>`:s.pass?`<span class="pill ok">clear</span>`:'<span class="pill">not run</span>';
+  const run=s.has_successful_run?'<span class="pill ok">✓ success</span>':'<span class="pill">none</span>';
+  return `<tr style="cursor:pointer" onclick="openCase('${c.id}')"><td><b>${esc(c.client_name)}</b><div class="dim" style="font-size:11px">${c.id}</div></td><td class="muted">${esc(c.segment)}</td><td>${esc(c.tcv)}</td><td><div class="muted" style="font-size:11px">${c.stage}. ${STAGES[c.stage-1]||''}</div><div class="bar"><i style="width:${c.stage/8*100}%"></i></div></td><td>${chk}</td><td>${run}</td><td class="muted">${esc(c.delivery_owner)}</td></tr>`}).join('')}
+ </tbody></table></div>`}
+function openCase(id){STATE.caseId=id;go('case')}
+
+function newCaseModal(){const html=`<div class="card"><h3>New closed-won case</h3>
+ <label class="f">Client name</label><input id="nc_name" placeholder="e.g. Vega Mobility">
+ <div class="grid g2"><div><label class="f">Segment</label><input id="nc_seg" placeholder="Mid-market · Auto"></div><div><label class="f">TCV</label><input id="nc_tcv" placeholder="$1.6m"></div></div>
+ <div class="grid g2"><div><label class="f">Opportunity reference</label><input id="nc_opp" placeholder="OPP-xxxxx"></div><div><label class="f">Delivery owner</label><input id="nc_own" placeholder="T. Brandt"></div></div>
+ <div class="row" style="margin-top:14px"><button class="btn pri" onclick="createCase()">Create case</button></div></div>`;
+ $('#view').innerHTML=html}
+async function createCase(){const body={client_name:$('#nc_name').value.trim(),segment:$('#nc_seg').value.trim(),tcv:$('#nc_tcv').value.trim(),opportunity_ref:$('#nc_opp').value.trim(),delivery_owner:$('#nc_own').value.trim()};if(!body.client_name){toast('Client name is required');return}const c=await api('/cases',{method:'POST',body:JSON.stringify(body)});toast('Case created');STATE.caseId=c.id;go('case')}
+
+/* ---------- Case workspace ---------- */
+async function pickCaseId(){if(STATE.caseId)return STATE.caseId;const cases=await api('/cases');STATE.cases=cases;return cases[0]&&cases[0].id}
+async function renderCase(v){const id=await pickCaseId();if(!id){v.innerHTML='<div class="card">No cases yet. Create one from Portfolio.</div>';return}
+ const c=await api('/cases/'+id);STATE.caseId=id;const s=c.summary;
+ const kinds=['msa','sow','order_form','po','dpa'];const labels={msa:'Executed MSA',sow:'SOW',order_form:'Order form',po:'Purchase order',dpa:'DPA'};
+ v.innerHTML=ph('Case workspace',esc(c.client_name),`${c.id} · ${esc(c.segment)} · TCV ${esc(c.tcv)} · owner ${esc(c.delivery_owner||'—')}`,
+   `<div class="row">${caseSwitcher(id)}<button class="btn pri" onclick="runChecks('${id}')">Run evidence checks</button></div>`)
+ +`<div class="grid g4" style="margin-bottom:14px">${kpi(s.pass,'Pass','ok')}${kpi(s.review,'Review','warn')}${kpi(s.block,'Block','bad')}${kpi(s.has_successful_run?'✓':'—','Concierge run',s.has_successful_run?'ok':'')}</div>
+ <div class="grid g12">
+  <div class="card"><h3>Evidence</h3>
+   <table><thead><tr><th>Document</th><th>Facts</th><th>Hash</th></tr></thead><tbody>
+   ${c.evidence.length?c.evidence.map(e=>`<tr><td><b>${esc(e.label||e.kind)}</b><div class="dim" style="font-size:11px">${esc(e.kind)}</div></td><td class="muted mono wrap" style="font-size:11px;max-width:360px">${esc(JSON.stringify(e.facts||{}))}</td><td>${e.sha256?`<span class="pill ok" title="${e.sha256}">sha256</span> <a href="/api/evidence/${e.id}/download">file</a>`:'<span class="dim">manual</span>'}</td></tr>`).join(''):'<tr><td colspan="3" class="dim">No evidence yet.</td></tr>'}
+   </tbody></table>
+   <div class="sep"></div><h4>Add structured evidence</h4>
+   <div class="row"><select id="ev_kind" style="width:150px">${kinds.map(k=>`<option value="${k}">${labels[k]}</option>`).join('')}</select>
+   <input id="ev_facts" placeholder='facts JSON e.g. {"signed":true,"residency":"UK"}' style="flex:1">
+   <button class="btn" onclick="addEvidence('${id}')">Add</button></div>
+   <h4>Or upload a file (PDF/DOC/DOCX/TXT ≤15MB)</h4>
+   <div class="row"><select id="up_kind" style="width:150px">${kinds.map(k=>`<option value="${k}">${labels[k]}</option>`).join('')}</select>
+   <input type="file" id="up_file" style="flex:1"><button class="btn" onclick="uploadEvidence('${id}')">Upload</button></div>
+  </div>
+  <div class="card"><h3>Deterministic checks <span class="dim" style="font-weight:400">(no LLM)</span></h3>
+   ${c.checks.length?c.checks.map(ck=>`<div class="lc ${ck.result==='PASS'?'done':ck.result==='BLOCK'?'hold':''}"><div style="flex:1"><b>${esc(ck.title)}</b> ${resultPill(ck.result)}<div class="muted" style="font-size:11.5px">${esc(ck.detail)}</div>${ck.disposition?`<div class="${ck.disposition==='cleared'?'ok':'bad'}" style="font-size:11px">${esc(ck.disposition)} by ${esc(ck.reviewer||'')} — ${esc(ck.rationale||'')}</div>`:''}</div></div>`).join(''):'<div class="dim">Run evidence checks to populate this.</div>'}
+   <div class="note ${s.approvable?'':'w'}">${s.approvable?'All checks clear and a successful Concierge run is recorded — kickoff is approvable.':`Not yet approvable: ${s.open_blocks} block(s), ${s.open_reviews} open review(s), successful run ${s.has_successful_run?'yes':'no'}.`}</div>
+  </div></div>
+  <div class="card" style="margin-top:14px"><h3>📎 Sample onboarding files <span class="dim" style="font-weight:400">— new here? start with these</span></h3>
+   <p class="muted" style="font-size:12.5px">Download these fictional sample documents to see what each onboarding record looks like, then upload them above (choose the matching document type) or copy the structured facts into "Add structured evidence". All samples are illustrative only.</p>
+   <div id="samplesBox" style="margin-top:10px"><span class="spin"></span> loading samples…</div>
+  </div>`;loadSamples();}
+async function loadSamples(){const box=$('#samplesBox');if(!box)return;try{const list=await api('/samples');box.innerHTML='<div class="grid g3">'+list.map(sm=>`<div class="lc"><div class="av">📄</div><div style="flex:1;min-width:0"><b>${esc(sm.title)}</b><div class="dim" style="font-size:11px">${esc(sm.filename)}</div></div><a class="btn sm" href="/api/samples/${sm.kind}/download">Download</a></div>`).join('')+'</div>'}catch(e){box.innerHTML='<span class="muted">Could not load samples.</span>'}}
+function caseSwitcher(cur){return `<select style="width:200px" onchange="STATE.caseId=this.value;go('case')">${(STATE.cases||[]).map(c=>`<option value="${c.id}" ${c.id===cur?'selected':''}>${esc(c.client_name)}</option>`).join('')}</select>`}
+async function addEvidence(id){let facts={};const raw=$('#ev_facts').value.trim();if(raw){try{facts=JSON.parse(raw)}catch(e){toast('Facts must be valid JSON');return}}await api('/cases/'+id+'/evidence',{method:'POST',body:JSON.stringify({kind:$('#ev_kind').value,facts})});toast('Evidence added · downstream checks invalidated');go('case')}
+async function uploadEvidence(id){const f=$('#up_file').files[0];if(!f){toast('Choose a file');return}const fd=new FormData();fd.append('kind',$('#up_kind').value);fd.append('file',f);const r=await fetch('/api/cases/'+id+'/uploads',{method:'POST',body:fd});if(!r.ok){const b=await r.json().catch(()=>({}));toast('Upload failed: '+(b.detail||r.statusText));return}toast('Uploaded with SHA-256');go('case')}
+async function runChecks(id){await api('/cases/'+id+'/checks',{method:'POST'});toast('Deterministic checks run');go('case')}
+
+/* ---------- Concierge review (REAL) ---------- */
+async function renderReview(v){const id=await pickCaseId();if(!id){v.innerHTML='<div class="card">No cases yet.</div>';return}
+ const c=await api('/cases/'+id);STATE.caseId=id;
+ const runs=c.agent_runs||[];
+ v.innerHTML=ph('Real Neuro-SAN run','Concierge review',`Calls the onramp_onboarding network through the running neuro-san server using your configured provider. No dummy calls: if it fails, the error is recorded and the case cannot be approved.`,
+   `<div class="row">${caseSwitcher(id)}<button class="btn pri" id="runBtn" onclick="runReview('${id}')">▶ Run Concierge review</button></div>`)
+ +`<div class="grid g12"><div>
+   <div class="card"><h3>Latest result</h3><div id="reviewResult">${runs.length?renderRun(runs[0]):'<div class="dim">No runs yet. Ensure the neuro-san server is running and an API key is set (Settings), then run a review.</div>'}</div></div>
+   <div class="card" style="margin-top:14px"><h3>Raw agent trace</h3><div id="reviewTrace">${runs.length?renderTrace(runs[0]):'<div class="dim">—</div>'}</div></div>
+   </div>
+   <div><div class="card"><h3>🔒 sly_data (private channel)</h3><p class="muted" style="font-size:12px">These values travel out-of-band to coded tools and are never placed in the LLM prompt. The API key is injected here too.</p>
+    <div style="margin-top:8px">${slyPreview(c)}</div></div>
+    <div class="card" style="margin-top:14px"><h3>Run history</h3>${runs.length?runs.map(r=>`<div class="lc ${r.status==='success'?'done':'hold'}"><div style="flex:1"><b>${r.status==='success'?'✓ success':'✕ error'}</b> <span class="dim" style="font-size:11px">${esc(r.model||'')}</span><div class="muted" style="font-size:11px">${esc((r.created_at||'').replace('T',' '))}</div></div></div>`).join(''):'<div class="dim">—</div>'}</div></div></div>`}
+function renderRun(r){if(!r)return '<div class="dim">—</div>';if(r.status!=='success')return `<div class="note b"><b>Run failed.</b> ${esc(r.error||'')}</div><div class="dim" style="font-size:11px">Provider ${esc(r.provider||'?')} · model ${esc(r.model||'?')}</div>`;
+ return `<div class="row" style="margin-bottom:8px"><span class="pill ok">success</span><span class="pill info mono">${esc(r.model||'')}</span><span class="pill mono">${esc(r.provider||'')}</span></div><pre>${esc(r.answer||'(no text)')}</pre>`}
+function renderTrace(r){if(!r||!r.trace||!r.trace.length)return '<div class="dim">No trace captured.</div>';return r.trace.map(m=>`<div class="lc"><div class="av" style="background:${agentColor(m.origin)}">${agentAb(m.origin)}</div><div style="flex:1;min-width:0"><div style="font-size:11px"><b>${esc(m.origin||m.type_name||'')}</b> <span class="dim">${esc(m.type_name||'')}</span></div><div class="muted mono" style="font-size:11px;white-space:pre-wrap;word-break:break-word">${esc((m.text||'').slice(0,600))}</div>${m.structure?`<pre style="margin-top:4px;max-height:160px">${esc(JSON.stringify(m.structure,null,2))}</pre>`:''}</div></div>`).join('')}
+function agentAb(id){const a=AGENTS.find(x=>x.id===id);return a?a.ab:'··'}
+function agentColor(id){const a=AGENTS.find(x=>x.id===id);return a?a.c:'#5d6d8e'}
+function slyPreview(c){const rows=[['case_id',c.id]];const tcv=c.tcv||'';if(tcv)rows.push(['contract_value',mask(tcv)]);rows.push(['screening_records','{entity: •••}']);rows.push(['<api key>','•••• (from Settings)']);return rows.map(r=>`<div class="slyrow"><span class="warn">${esc(r[0])}</span><span class="dim">${esc(r[1])}</span></div>`).join('')+'<div class="ok" style="font-size:11px;margin-top:6px">✓ never placed in prompts</div>'}
+function mask(s){return String(s).replace(/[0-9]/g,'•')}
+async function runReview(id){const btn=$('#runBtn');btn.disabled=true;btn.innerHTML='<span class="spin"></span> Running real network…';
+ try{const res=await api('/cases/'+id+'/review',{method:'POST'});$('#reviewResult').innerHTML=renderRun(res.run);$('#reviewTrace').innerHTML=renderTrace(res.run);toast('Concierge run complete: '+res.status);go('review')}
+ catch(e){const run=(e.body&&e.body.run)||{status:'error',error:e.message};$('#reviewResult').innerHTML=renderRun(run);toast('Run failed — recorded and blocking approval');btn.disabled=false;btn.textContent='▶ Run Concierge review'}}
+
+/* ---------- Lifecycle board ---------- */
+async function renderLifecycle(v){const id=await pickCaseId();if(!id){v.innerHTML='<div class="card">No cases yet.</div>';return}
+ const c=await api('/cases/'+id);STATE.caseId=id;const s=c.summary;
+ const gates=[['handoff','Handoff sign-off',1],['compliance','Compliance sign-off',3],['counsel','Counsel sign-off',4],['finance','Finance approval',5],['mobilisation','Mobilisation ready',6]];
+ const done=new Set((c.signoffs||[]).map(x=>x.gate));
+ v.innerHTML=ph('Governed life cycle','Lifecycle board',`Record named sign-offs in order. Kickoff approval is enforced server-side: all blocks resolved, all reviews cleared, and a successful Concierge run.`,caseSwitcher(id))
+ +`<div class="row" style="align-items:stretch;gap:8px;margin-bottom:14px">${STAGES.map((st,i)=>`<div class="card" style="flex:1;min-width:110px;${i+1===c.stage?'border-color:var(--a1)':''}"><div class="eyebrow">Stage ${i+1}</div><div style="font-weight:600;font-size:12px;margin-top:4px">${st}</div></div>`).join('')}</div>
+ <div class="grid g12"><div class="card"><h3>Named sign-offs</h3>
+   ${gates.map(g=>`<div class="lc ${done.has(g[0])?'done':''}"><div style="flex:1"><b>${g[1]}</b> ${done.has(g[0])?'<span class="pill ok">recorded</span>':'<span class="pill">pending</span>'}</div>${done.has(g[0])?'':`<button class="btn sm" onclick="signoffModal('${id}','${g[0]}','${g[1]}')">Record</button>`}</div>`).join('')}
+   ${(c.signoffs||[]).map(x=>`<div class="dim" style="font-size:11px;margin-top:4px">${esc(x.gate)} — ${esc(x.reviewer)} (${esc((x.created_at||'').replace('T',' '))}) ${esc(x.note||'')}</div>`).join('')}
+  </div>
+  <div class="card"><h3>Kickoff approval gate</h3>
+   <div class="note ${s.approvable?'':'b'}">${s.approvable?'Ready: all gate conditions met.':`Blocked: ${s.open_blocks} block(s), ${s.open_reviews} open review(s), ${s.failed} failed, successful run: ${s.has_successful_run?'yes':'no'}.`}</div>
+   <button class="btn pri" onclick="approveKickoff('${id}')" ${s.approvable?'':'disabled'}>Approve kickoff</button>
+  </div></div>`}
+function signoffModal(id,gate,label){const html=`<div class="card"><h3>Record: ${esc(label)}</h3><label class="f">Reviewer name</label><input id="so_rev" placeholder="e.g. D. Mensah"><label class="f">Note</label><input id="so_note" placeholder="attestation note"><div class="row" style="margin-top:12px"><button class="btn pri" onclick="saveSignoff('${id}','${gate}')">Save</button> <button class="btn" onclick="go('lifecycle')">Cancel</button></div></div>`;$('#view').innerHTML=html}
+async function saveSignoff(id,gate){const reviewer=$('#so_rev').value.trim();if(!reviewer){toast('Reviewer required');return}await api('/cases/'+id+'/signoffs',{method:'POST',body:JSON.stringify({gate,reviewer,note:$('#so_note').value.trim()})});toast('Sign-off recorded');go('lifecycle')}
+async function approveKickoff(id){try{await api('/cases/'+id+'/approve-kickoff',{method:'POST'});toast('Kickoff approved')}catch(e){const reasons=(e.body&&e.body.detail&&e.body.detail.reasons)||[];toast('Not approvable: '+(reasons.join('; ')||e.message))}go('lifecycle')}
+
+/* ---------- Human review ---------- */
+async function renderHuman(v){const id=await pickCaseId();if(!id){v.innerHTML='<div class="card">No cases yet.</div>';return}
+ const c=await api('/cases/'+id);STATE.caseId=id;const open=c.checks.filter(k=>k.result==='REVIEW'||k.result==='BLOCK');
+ v.innerHTML=ph('Human-in-the-loop','Human review','Disposition every REVIEW with a named reviewer and rationale. A hold cannot clear a check; a BLOCK clears only by fixing evidence and rerunning checks.',caseSwitcher(id))
+ +`<div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>Check</th><th>Result</th><th>Detail</th><th>Disposition</th><th>Action</th></tr></thead><tbody>
+ ${open.length?open.map(k=>`<tr><td><b>${esc(k.title)}</b></td><td>${resultPill(k.result)}</td><td class="muted">${esc(k.detail)}</td><td>${k.disposition?`<span class="${k.disposition==='cleared'?'ok':'bad'}">${esc(k.disposition)}</span> <span class="dim">${esc(k.reviewer||'')}</span>`:'<span class="dim">open</span>'}</td><td>${k.result==='REVIEW'?`<button class="btn sm" onclick="dispModal('${k.id}')">Disposition</button>`:'<span class="dim">fix evidence</span>'}</td></tr>`).join(''):'<tr><td colspan="5" class="dim">No open REVIEW/BLOCK checks. Run or rerun checks on the case workspace.</td></tr>'}
+ </tbody></table></div>`}
+function dispModal(cid){const html=`<div class="card"><h3>Disposition check</h3><label class="f">Reviewer name</label><input id="d_rev" placeholder="e.g. S. Bright (Counsel)"><label class="f">Rationale</label><input id="d_rat" placeholder="reason for the decision"><label class="f">Decision</label><select id="d_dec"><option value="cleared">Clear (human accepts)</option><option value="hold">Hold (does not clear)</option><option value="failed">Fail (blocks)</option></select><div class="row" style="margin-top:12px"><button class="btn pri" onclick="saveDisp('${cid}')">Save</button> <button class="btn" onclick="go('humanreview')">Cancel</button></div></div>`;$('#view').innerHTML=html}
+async function saveDisp(cid){const reviewer=$('#d_rev').value.trim();if(!reviewer){toast('Reviewer required');return}await api('/checks/'+cid+'/disposition',{method:'POST',body:JSON.stringify({disposition:$('#d_dec').value,reviewer,rationale:$('#d_rat').value.trim()})});toast('Disposition recorded in audit trail');go('humanreview')}
+
+/* ---------- Audit ---------- */
+async function renderAudit(v){const id=await pickCaseId();if(!id){v.innerHTML='<div class="card">No cases yet.</div>';return}
+ const rows=await api('/cases/'+id+'/audit');STATE.caseId=id;
+ v.innerHTML=ph('Append-only history','Audit history','Every action on this case, most recent first.',caseSwitcher(id))
+ +`<div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Detail</th></tr></thead><tbody>
+ ${rows.map(r=>`<tr><td class="mono" style="font-size:11px">${esc((r.created_at||'').replace('T',' '))}</td><td class="muted">${esc(r.actor)}</td><td><span class="tag">${esc(r.action)}</span></td><td class="muted mono" style="font-size:11px">${esc(JSON.stringify(r.detail||{}))}</td></tr>`).join('')}
+ </tbody></table></div>`}
+
+/* ---------- Agent network ---------- */
+async function renderNetwork(v){const W=960,H=360,fx=480,fy=48;const sp=AGENTS.slice(1);const n=sp.length;
+ const pos=sp.map((a,i)=>({a,x:70+i*((W-140)/(n-1)),y:220}));
+ const edges=pos.map(p=>`<path class="edge" d="M${fx},${fy+24} C${fx},130 ${p.x},130 ${p.x},${p.y-24}"/>`).join('');
+ const nodes=pos.map(p=>`<g class="node"><rect x="${p.x-46}" y="${p.y-24}" width="92" height="48" rx="11" style="fill:var(--panel2)" stroke="${p.a.c}" stroke-width="2"/><text x="${p.x}" y="${p.y-2}" text-anchor="middle" font-size="13" font-weight="700" fill="${p.a.c}">${p.a.ab}</text><text x="${p.x}" y="${p.y+14}" text-anchor="middle" font-size="8.5" fill="var(--text)">${p.a.id.replace('_agent','').replace('_',' ').slice(0,12)}</text></g>`).join('');
+ v.innerHTML=ph('neuro-san network: onramp_onboarding','Agent network','The real served network: an Onboarding Concierge front-man delegating to eight specialists via AAOSA. Four deterministic Python coded tools do the exact work.')
+ +`<div class="card"><svg viewBox="0 0 ${W} ${H}" width="100%">${edges}${nodes}<g class="node"><rect x="${fx-100}" y="${fy-24}" width="200" height="48" rx="12" fill="url(#g)"/><defs><linearGradient id="g"><stop offset="0" stop-color="#5b8cff"/><stop offset="1" stop-color="#b36bff"/></linearGradient></defs><text x="${fx}" y="${fy+4}" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">Onboarding Concierge</text></g></svg>
+ <div class="note">Coded tools: checklist_tracker, compliance_screen, clause_playbook, po_reconciler — each reads private values from sly_data and returns only non-sensitive results.</div></div>`}
+
+/* ---------- Architecture (current, single deployment) ---------- */
+async function renderArchitecture(v){
+ let health=null;try{health=await api('/health')}catch(e){}
+ const prov=health?health.provider:'—';const nsOk=health&&health.neuro_san&&health.neuro_san.reachable;const keyOk=health&&health.provider_key_configured;
+ const W=1000,H=560;
+ const box=(x,y,w,h,title,sub,stroke,dash)=>`<g><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="11" style="fill:var(--panel2)" stroke="${stroke||'#22304f'}" stroke-width="1.8" ${dash?'stroke-dasharray="5 4"':''}/><text x="${x+w/2}" y="${y+(sub?h/2-3:h/2+4)}" text-anchor="middle" font-size="12" font-weight="700" fill="currentColor">${title}</text>${sub?`<text x="${x+w/2}" y="${y+h/2+14}" text-anchor="middle" font-size="10" fill="#8fa0c0">${sub}</text>`:''}</g>`;
+ const ar=(x1,y1,x2,y2,col,label)=>`<path d="M${x1},${y1} L${x2},${y2}" stroke="${col||'#5b8cff'}" stroke-width="2" fill="none" marker-end="url(#ah)"/>${label?`<text x="${(x1+x2)/2}" y="${(y1+y2)/2-6}" text-anchor="middle" font-size="9.5" fill="#8fa0c0">${label}</text>`:''}`;
+ const svg=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="color:var(--text)">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#5b8cff"/></marker>
+    <linearGradient id="fm"><stop offset="0" stop-color="#5b8cff"/><stop offset="1" stop-color="#b36bff"/></linearGradient>
+    <linearGradient id="llmg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#21d4b4"/><stop offset="1" stop-color="#43c3ff"/></linearGradient>
+  </defs>
+
+  <!-- Local machine boundary -->
+  <rect x="20" y="20" width="700" height="520" rx="16" fill="none" stroke="#2fd27a" stroke-width="2" stroke-dasharray="6 5"/>
+  <text x="34" y="42" font-size="12" font-weight="700" fill="#2fd27a">Local machine (one deployment)</text>
+
+  <!-- Browser -->
+  ${box(60,70,180,56,'Browser','Single-page UI','#5b8cff')}
+
+  <!-- App tier -->
+  <rect x="48" y="150" width="640" height="150" rx="14" fill="none" stroke="#5b8cff" stroke-width="1.6"/>
+  <text x="62" y="170" font-size="11.5" font-weight="700" fill="#5b8cff">App tier · FastAPI + Uvicorn · :8000</text>
+  ${box(66,184,180,52,'ONRAMP API','REST + static host','#5b8cff')}
+  ${box(262,184,180,52,'checks.py','PASS / REVIEW / BLOCK','#ffb547')}
+  ${box(460,184,210,52,'SQLite + uploads','data/onramp.db · SHA-256','#7aa2ff')}
+  ${box(262,250,180,40,'review.py','prompt + sly_data','#b36bff',1)}
+  ${box(66,250,180,40,'neuro_client.py','streaming_chat','#21d4b4')}
+  ${box(460,250,210,40,'audit (append-only)','every action logged','#43c3ff',1)}
+
+  <!-- Agent tier -->
+  <rect x="48" y="326" width="640" height="192" rx="14" fill="none" stroke="#b36bff" stroke-width="1.6"/>
+  <text x="62" y="346" font-size="11.5" font-weight="700" fill="#b36bff">Agent tier · Neuro-SAN server · :8080</text>
+  <g><rect x="250" y="356" width="236" height="44" rx="11" fill="url(#fm)"/><text x="368" y="376" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">Onboarding Concierge</text><text x="368" y="391" text-anchor="middle" font-size="9" fill="#e6ecf8">front-man · AAOSA</text></g>
+  ${box(62,420,120,40,'8 specialists','DH·DI·CO·LG·CB·DM·AP·CC','#43c3ff')}
+  ${box(196,420,150,40,'4 coded tools','deterministic Python','#2fd27a')}
+  ${box(360,420,150,40,'sly_data','keys & PII off-prompt','#ffb547')}
+  ${box(524,420,150,40,'HOCON registry','onramp_onboarding','#b36bff',1)}
+  <path class="edge" d="M368,400 L368,418" stroke="#b36bff" stroke-width="2" fill="none"/>
+  ${box(250,472,236,36,'manifest.hocon → served','AGENT_TOOL_PATH=src','#5d6d8e',1)}
+
+  <!-- Remote LLM (outside the box) -->
+  <g><rect x="770" y="250" width="200" height="80" rx="14" fill="url(#llmg)"/><text x="870" y="284" text-anchor="middle" font-size="13" font-weight="700" fill="#06202a">Remote LLM (BYOK)</text><text x="870" y="304" text-anchor="middle" font-size="10" fill="#06343f">provider: ${esc(prov)}</text></g>
+  <text x="870" y="238" text-anchor="middle" font-size="10.5" fill="#8fa0c0">HuggingFace · NVIDIA · OpenRouter · OpenAI</text>
+
+  <!-- Arrows -->
+  ${ar(150,126,150,184,'#5b8cff','HTTP/JSON')}
+  ${ar(156,236,156,250,'#21d4b4')}
+  ${ar(156,290,300,356,'#21d4b4','HTTP streaming_chat (:8080)')}
+  ${ar(486,378,768,300,'#21d4b4','LLM API · key via sly_data')}
+  ${ar(246,210,262,210,'#ffb547')}
+  ${ar(442,210,460,210,'#7aa2ff')}
+
+  <text x="34" y="534" font-size="10" fill="#8fa0c0">Solid = runtime call · dashed = config/governance boundary · green box = everything runs on one local machine; only the LLM call leaves it.</text>
+ </svg>`;
+ v.innerHTML=ph('Current architecture · single deployment','Application architecture',
+   'The as-built architecture: two local Python processes (ONRAMP app on :8000, Neuro-SAN server on :8080) plus a remote LLM provider you choose. One concrete deployment — not three cloud diagrams. Full write-up in docs/ARCHITECTURE.md.',
+   `<div class="row"><span class="pill ${nsOk?'ok':'bad'}"><span class="dot"></span>neuro-san ${nsOk?'connected':'offline'}</span><span class="pill ${keyOk?'ok':'warn'}">provider ${esc(prov)}${keyOk?' ✓':' (no key)'}</span></div>`)
+ +`<div class="card">${svg}</div>
+ <div class="grid g3" style="margin-top:14px">
+  <div class="card"><h3>🖥️ Local-first</h3><p class="muted">The browser UI, FastAPI app, deterministic checks, Neuro-SAN server, SQLite store and uploaded files all run on one machine. Only the LLM request leaves it, to the provider you select (bring-your-own-key).</p></div>
+  <div class="card"><h3>🔒 sly_data boundary</h3><p class="muted">API keys, contract values and screening identifiers travel on neuro-san's private sly_data channel to coded tools and the model adapter — never inside a prompt. Keys live in a git-ignored .env, masked in the UI.</p></div>
+  <div class="card"><h3>⚖️ Real calls, enforced gates</h3><p class="muted">No dummy LLM calls: a Concierge review drives the real network; failures are recorded and block approval. Kickoff needs all blocks resolved, all reviews cleared, and a successful real run.</p></div>
+ </div>
+ <div class="card" style="margin-top:14px"><h3>Deployment lifecycle</h3>
+  <div class="grid g2"><div><h4>Start</h4><pre>startup.bat
+  ├─ Neuro-SAN server  (ns run, :8080)
+  └─ ONRAMP app        (uvicorn, :8000)</pre></div>
+  <div><h4>Stop</h4><pre>shutdown.bat
+  ├─ frees port 8000
+  └─ frees port 8080</pre></div></div>
+  <div class="note">Portability is shown by swapping the provider on the Settings page — the same HOCON network, coded tools, checks and governance run unchanged wherever the two processes run.</div></div>`}
+
+/* ---------- Settings / API keys ---------- */
+async function renderSettings(v){const s=await api('/settings');const ks=s.key_status;
+ v.innerHTML=ph('Configure','Settings · LLM API keys','Save remote-provider keys and choose the active provider/model. Keys are stored locally in .env (git-ignored), masked here, and delivered to the network via the private sly_data channel — never placed in prompts. No local models are used.','')
+ +`<div class="grid g12"><div class="card"><h3>Active provider</h3>
+   <label class="f">Provider</label><select id="set_prov" onchange="onProvChange()">${s.providers.map(p=>`<option value="${p.key}" ${p.key===s.active.provider?'selected':''}>${esc(p.label)}</option>`).join('')}</select>
+   <label class="f">Model</label><input id="set_model" value="${esc(s.active.model)}"><div class="dim" id="set_modelhelp" style="font-size:11px;margin-top:3px"></div>
+   <label class="f">Base URL</label><input id="set_base" value="${esc(s.active.base_url)}">
+   <label class="f">API key ${s.active.has_key?`<span class="ok">(configured: ${esc(s.active.masked_key)})</span>`:'<span class="bad">(not set)</span>'}</label>
+   <input id="set_key" type="password" placeholder="${s.active.has_key?'leave blank to keep existing key':'paste provider API key'}">
+   <div class="dim" id="set_keyhelp" style="font-size:11px;margin-top:3px"></div>
+   <div class="row" style="margin-top:14px"><button class="btn pri" onclick="saveSettings()">Save settings</button><button class="btn" id="testBtn" onclick="testConn()">⚡ Test connection</button></div>
+   <div id="testResult" style="margin-top:10px"></div>
+   <div class="note">Keys never leave this machine except as auth to the provider you select, and are passed to agents via sly_data (off the prompt path).</div>
+  </div>
+  <div>
+  <div class="card"><h3>💳 Credit balance</h3><div id="creditBox"><span class="dim">Loading…</span></div>
+   <div class="dim" style="font-size:11px;margin-top:6px">Live balance is shown for providers that expose it (OpenRouter). Others: check your provider dashboard.</div>
+   <div class="row" style="margin-top:8px"><button class="btn sm" onclick="loadCredits()">Refresh balance</button></div>
+  </div>
+  <div class="card" style="margin-top:14px"><h3>Provider key status</h3>
+   <table><thead><tr><th>Provider</th><th>class</th><th>Key</th></tr></thead><tbody>
+   ${Object.entries(ks).map(([k,x])=>`<tr><td><b>${esc(x.label)}</b></td><td class="mono">${esc(x.llm_class)}</td><td>${x.has_key?`<span class="pill ok">${esc(x.masked_key)}</span>`:'<span class="pill">not set</span>'}</td></tr>`).join('')}
+   </tbody></table>
+   <div class="sep"></div><h4>neuro-san server</h4>
+   ${s.neuro_san.reachable?`<span class="pill ok"><span class="dot"></span>reachable at ${esc(s.neuro_san.base_url)}</span>`:`<div class="note b">Not reachable at ${esc(s.neuro_san.base_url)}. Start it with startup.bat (or ns run --server-only --server-http-port 8080).</div>`}
+  </div></div></div>`;
+ window._KS=ks;onProvChange();loadCredits();}
+function onProvChange(){const k=$('#set_prov').value;const x=(window._KS||{})[k];if(!x)return;$('#set_modelhelp').textContent=x.model_help||'';$('#set_keyhelp').textContent=x.key_help||'';if(!$('#set_base').value||$('#set_base').dataset.auto!=='0'){$('#set_base').value=x.default_base_url||'';}if(!$('#set_model').value){$('#set_model').value=x.default_model||''}}
+async function saveSettings(){const body={provider:$('#set_prov').value,model:$('#set_model').value.trim(),base_url:$('#set_base').value.trim()};const key=$('#set_key').value.trim();if(key)body.api_key=key;await api('/settings',{method:'POST',body:JSON.stringify(body)});toast('Settings saved');refreshHeader();go('settings')}
+async function testConn(){const btn=$('#testBtn');const box=$('#testResult');btn.disabled=true;btn.innerHTML='<span class="spin"></span> Testing…';box.innerHTML='';
+ try{const r=await api('/settings/test',{method:'POST'});
+  if(r.ok){box.innerHTML=`<div class="note"><b class="ok">✓ Connection OK</b> — ${esc(r.provider)} · ${esc(r.model)} · ${r.latency_ms} ms. Model replied: "${esc(r.sample||'')}"</div>`}
+  else{box.innerHTML=`<div class="note b"><b class="bad">✗ Failed</b> — ${esc(r.error||'unknown error')}</div>`}
+ }catch(e){box.innerHTML=`<div class="note b"><b class="bad">✗ Failed</b> — ${esc(e.message||e)}</div>`}
+ btn.disabled=false;btn.textContent='⚡ Test connection'}
+async function loadCredits(){const box=$('#creditBox');if(!box)return;box.innerHTML='<span class="spin"></span> checking…';
+ try{const c=await api('/settings/credits');
+  if(c.available){const rem=(c.remaining==null)?'unlimited / not capped':('$'+Number(c.remaining).toFixed(4));const used=(c.usage==null)?'—':('$'+Number(c.usage).toFixed(4));const lim=(c.limit==null)?'no hard limit':('$'+Number(c.limit).toFixed(2));
+   box.innerHTML=`<div class="kpi"><div class="v grad-text">${rem}</div><div class="l">remaining credit</div></div><div class="row" style="margin-top:8px;gap:16px"><span class="muted">used <b>${used}</b></span><span class="muted">limit <b>${lim}</b></span>${c.is_free_tier?'<span class="pill info">free tier</span>':''}</div>`}
+  else{box.innerHTML=`<div class="muted">${esc(c.reason||'Not available.')}</div>`}
+ }catch(e){box.innerHTML=`<div class="muted">Could not load balance: ${esc(e.message||e)}</div>`}}
+
+/* ---------- Header status ---------- */
+async function refreshHeader(){try{const h=await api('/health');$('#provPill').textContent='provider: '+h.provider+(h.provider_key_configured?' ✓':' (no key)');$('#provPill').className='pill '+(h.provider_key_configured?'ok':'warn');const ns=h.neuro_san||{};$('#nsPill').innerHTML='<span class="dot"></span>neuro-san: '+(ns.reachable?'connected':'offline');$('#nsPill').className='pill '+(ns.reachable?'ok':'bad')}catch(e){}}
+
+/* ---------- Theme (dark/light) ---------- */
+function applyTheme(t){document.body.classList.toggle('light',t==='light');const b=$('#themeBtn');if(b)b.textContent=t==='light'?'☾ Dark':'☀ Light'}
+function initTheme(){let t='dark';try{t=localStorage.getItem('onramp_theme')||'dark'}catch(e){}applyTheme(t)}
+function toggleTheme(){let t='dark';try{t=localStorage.getItem('onramp_theme')||'dark'}catch(e){}t=t==='light'?'dark':'light';try{localStorage.setItem('onramp_theme',t)}catch(e){}applyTheme(t)}
+
+initTheme();buildNav();refreshHeader();setInterval(refreshHeader,15000);go((location.hash||'').slice(1)||'portfolio');
+</script>
+</body>
+</html>
