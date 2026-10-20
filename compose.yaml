@@ -1,0 +1,36 @@
+# Docker Compose for ONRAMP local development
+# Documents the containerized topology for team development and cloud deployment.
+services:
+  onramp-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - ONRAMP_DB=/data/onramp.db
+      - NEURO_SAN_URL=http://neuro-san:8080
+      - ONRAMP_LLM_CLASS=${ONRAMP_LLM_CLASS:-ollama}
+      - ONRAMP_MODEL=${ONRAMP_MODEL:-qwen3:8b}
+    volumes:
+      - ./data:/data
+      - ./registries:/app/registries:ro
+      - ./src:/app/src:ro
+    depends_on:
+      - neuro-san
+
+  neuro-san:
+    image: python:3.12-slim
+    working_dir: /app
+    command: >
+      sh -c "pip install neuro-san-studio==0.4.2 && 
+             ns run --server-only --server-host 0.0.0.0 --server-http-port 8080"
+    environment:
+      - AGENT_MANIFEST_FILE=/app/registries/manifest.hocon
+      - AGENT_TOOL_PATH=/app/src
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+    volumes:
+      - ./registries:/app/registries:ro
+      - ./src:/app/src:ro
+    ports:
+      - "8080:8080"

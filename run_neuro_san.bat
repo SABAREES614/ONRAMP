@@ -1,0 +1,3 @@
+@echo off
+echo Starting Neuro-SAN with PowerShell loader...
+powershell -NoProfile -ExecutionPolicy Bypass -File .\run_neuro_san.ps1
