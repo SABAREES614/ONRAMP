@@ -89,6 +89,7 @@ CREATE TABLE IF NOT EXISTS agent_runs (
     answer      TEXT,
     trace       TEXT,                -- JSON array of chat messages (raw)
     error       TEXT,
+    duration_ms INTEGER,             -- measured wall-clock AI time for the run
     created_at  TEXT NOT NULL,
     FOREIGN KEY (case_id) REFERENCES cases(id)
 );
@@ -100,6 +101,11 @@ CREATE TABLE IF NOT EXISTS audit (
     action      TEXT NOT NULL,
     detail      TEXT,                -- JSON
     created_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS app_settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT
 );
 """
 
@@ -129,6 +135,11 @@ def init_db(seed: bool = True) -> None:
     """Create tables and optionally seed fictional starter cases."""
     with connect() as conn:
         conn.executescript(SCHEMA)
+        # Lightweight migration: add duration_ms to agent_runs if an older DB
+        # predates it (CREATE TABLE IF NOT EXISTS won't add new columns).
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(agent_runs)").fetchall()}
+        if "duration_ms" not in cols:
+            conn.execute("ALTER TABLE agent_runs ADD COLUMN duration_ms INTEGER")
         if seed:
             existing = conn.execute("SELECT COUNT(*) AS n FROM cases").fetchone()["n"]
             if existing == 0:
@@ -263,6 +274,48 @@ def list_evidence(case_id: str) -> list[dict[str, Any]]:
     return [_row_to_dict(r) for r in rows]
 
 
+def delete_evidence(evidence_id: str, actor: str) -> dict[str, Any] | None:
+    """Delete an evidence record. Returns the deleted row (so the caller can
+    remove any stored file) or None if not found. Deleting evidence invalidates
+    downstream checks, agent runs and sign-offs, like any evidence change."""
+    with connect() as conn:
+        row = conn.execute("SELECT * FROM evidence WHERE id = ?", (evidence_id,)).fetchone()
+        if row is None:
+            return None
+        case_id = row["case_id"]
+        conn.execute("DELETE FROM evidence WHERE id = ?", (evidence_id,))
+        _invalidate_downstream(conn, case_id, actor, reason="evidence_deleted")
+        record_audit(conn, case_id=case_id, actor=actor, action="evidence_deleted",
+                     detail={"kind": row["kind"], "label": row["label"],
+                             "sha256": row["sha256"]})
+    return _row_to_dict(row)
+
+
+def remove_file(evidence_id: str, actor: str) -> dict[str, Any] | None:
+    """Remove the attached file from an evidence record but KEEP the record.
+
+    Clears filename/sha256/size_bytes so the document row remains (as a manual
+    entry). Returns the pre-removal row (so the caller can delete the stored
+    file) or None if not found / no file attached. Invalidates downstream."""
+    with connect() as conn:
+        row = conn.execute("SELECT * FROM evidence WHERE id = ?", (evidence_id,)).fetchone()
+        if row is None:
+            return None
+        before = _row_to_dict(row)
+        if not before.get("sha256"):
+            return None  # nothing to remove
+        case_id = row["case_id"]
+        conn.execute(
+            "UPDATE evidence SET filename = NULL, sha256 = NULL, size_bytes = NULL "
+            "WHERE id = ?", (evidence_id,),
+        )
+        _invalidate_downstream(conn, case_id, actor, reason="file_removed")
+        record_audit(conn, case_id=case_id, actor=actor, action="file_removed",
+                     detail={"kind": row["kind"], "label": row["label"],
+                             "sha256": before.get("sha256")})
+    return before
+
+
 # --- Checks ----------------------------------------------------------------
 
 def replace_checks(case_id: str, results: list[dict[str, Any]], actor: str) -> None:
@@ -337,12 +390,14 @@ def add_agent_run(case_id: str, data: dict[str, Any]) -> dict[str, Any]:
     with connect() as conn:
         conn.execute(
             "INSERT INTO agent_runs (id, case_id, agent_name, provider, model, status, "
-            "prompt, answer, trace, error, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "prompt, answer, trace, error, duration_ms, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 rid, case_id, data.get("agent_name", ""), data.get("provider", ""),
                 data.get("model", ""), data.get("status", "error"),
                 data.get("prompt", ""), data.get("answer", ""),
-                json.dumps(data.get("trace", [])), data.get("error"), now_iso(),
+                json.dumps(data.get("trace", [])), data.get("error"),
+                data.get("duration_ms"), now_iso(),
             ),
         )
         record_audit(conn, case_id=case_id, actor="onboarding_concierge",
@@ -368,6 +423,96 @@ def latest_successful_run(case_id: str) -> dict[str, Any] | None:
             "ORDER BY created_at DESC LIMIT 1", (case_id,)
         ).fetchone()
     return _row_to_dict(row)
+
+
+# --- ROI settings & accumulated savings ------------------------------------
+
+ROI_DEFAULTS = {"hourly_rate_usd": 20.0, "human_baseline_minutes": 240.0}
+
+
+def get_roi_settings() -> dict[str, float]:
+    """Return the ROI assumptions (hourly rate + human baseline minutes)."""
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT key, value FROM app_settings WHERE key IN ('hourly_rate_usd','human_baseline_minutes')"
+        ).fetchall()
+    out = dict(ROI_DEFAULTS)
+    for r in rows:
+        try:
+            out[r["key"]] = float(r["value"])
+        except (TypeError, ValueError):
+            pass
+    return out
+
+
+def set_roi_settings(hourly_rate_usd: float | None = None,
+                     human_baseline_minutes: float | None = None) -> dict[str, float]:
+    with connect() as conn:
+        if hourly_rate_usd is not None:
+            conn.execute("INSERT INTO app_settings (key, value) VALUES ('hourly_rate_usd', ?) "
+                         "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                         (str(float(hourly_rate_usd)),))
+        if human_baseline_minutes is not None:
+            conn.execute("INSERT INTO app_settings (key, value) VALUES ('human_baseline_minutes', ?) "
+                         "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                         (str(float(human_baseline_minutes)),))
+    return get_roi_settings()
+
+
+def _successful_run_durations() -> list[int]:
+    """Measured AI durations (ms) for every successful run across all cases."""
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT duration_ms FROM agent_runs WHERE status = 'success'"
+        ).fetchall()
+    return [int(r["duration_ms"]) for r in rows if r["duration_ms"] is not None]
+
+
+def roi_summary() -> dict[str, Any]:
+    """Compute accumulated ROI across all successful runs, using the current
+    assumptions. AI time is the real measured wall-clock; human time is the
+    editable baseline assumption. All money in USD. This is an illustrative
+    decision aid, not a measured human-time claim."""
+    settings = get_roi_settings()
+    rate = settings["hourly_rate_usd"]
+    baseline_min = settings["human_baseline_minutes"]
+    durations = _successful_run_durations()
+    runs = len(durations)
+
+    ai_minutes_total = sum(durations) / 1000.0 / 60.0
+    human_minutes_total = baseline_min * runs
+    saved_minutes_total = max(human_minutes_total - ai_minutes_total, 0.0)
+    cost_saved_total = saved_minutes_total / 60.0 * rate
+    human_cost_total = human_minutes_total / 60.0 * rate
+
+    return {
+        "runs": runs,
+        "hourly_rate_usd": rate,
+        "human_baseline_minutes": baseline_min,
+        "ai_minutes_total": round(ai_minutes_total, 2),
+        "human_minutes_total": round(human_minutes_total, 2),
+        "saved_minutes_total": round(saved_minutes_total, 2),
+        "human_cost_total_usd": round(human_cost_total, 2),
+        "cost_saved_total_usd": round(cost_saved_total, 2),
+    }
+
+
+def roi_for_run(duration_ms: int | None) -> dict[str, Any]:
+    """Per-run ROI using the current assumptions."""
+    settings = get_roi_settings()
+    rate = settings["hourly_rate_usd"]
+    baseline_min = settings["human_baseline_minutes"]
+    ai_min = (int(duration_ms) / 1000.0 / 60.0) if duration_ms else 0.0
+    saved_min = max(baseline_min - ai_min, 0.0)
+    return {
+        "hourly_rate_usd": rate,
+        "human_baseline_minutes": baseline_min,
+        "ai_minutes": round(ai_min, 3),
+        "ai_seconds": round(ai_min * 60.0, 1),
+        "human_minutes": round(baseline_min, 2),
+        "saved_minutes": round(saved_min, 2),
+        "cost_saved_usd": round(saved_min / 60.0 * rate, 2),
+    }
 
 
 def _invalidate_downstream(conn: sqlite3.Connection, case_id: str, actor: str,

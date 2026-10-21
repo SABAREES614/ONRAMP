@@ -88,6 +88,29 @@ def test_review_without_key_records_error_and_blocks(client):
     assert ar.status_code == 409
 
 
+def test_approve_kickoff_advances_to_stage_8(client):
+    import onramp_neuro_san.db as db
+    cases = {c["client_name"]: c for c in client.get("/api/cases").json()}
+    nw = cases["Northwind Logistics"]["id"]  # clean checks, gate clears
+    client.post(f"/api/cases/{nw}/checks")
+    # Inject a successful Neuro-SAN run so the gate is satisfiable in a test
+    # (no live server/key available here).
+    db.add_agent_run(nw, {"agent_name": "onramp/onramp_onboarding",
+                          "provider": "test", "model": "test", "status": "success",
+                          "prompt": "p", "answer": "ok", "trace": [{"text": "ok"}],
+                          "error": None})
+    summary = client.get(f"/api/cases/{nw}").json()["summary"]
+    assert summary["approvable"] is True
+
+    r = client.post(f"/api/cases/{nw}/approve-kickoff")
+    assert r.status_code == 200
+    assert r.json()["status"] == "approved"
+
+    case = client.get(f"/api/cases/{nw}").json()
+    assert case["stage"] == 8
+    assert case["status"] == "kickoff_approved"
+
+
 def test_evidence_change_invalidates_checks(client):
     cases = {c["client_name"]: c for c in client.get("/api/cases").json()}
     nw = cases["Northwind Logistics"]["id"]
@@ -97,6 +120,52 @@ def test_evidence_change_invalidates_checks(client):
                 json={"kind": "msa", "facts": {"liability_cap_multiple": 1.0}})
     case = client.get(f"/api/cases/{nw}").json()
     assert case["checks"] == []
+
+
+def test_delete_evidence_removes_and_invalidates(client):
+    cases = {c["client_name"]: c for c in client.get("/api/cases").json()}
+    nw = cases["Northwind Logistics"]["id"]
+    before = client.get(f"/api/cases/{nw}").json()["evidence"]
+    assert len(before) >= 1
+    target = before[0]["id"]
+    client.post(f"/api/cases/{nw}/checks")  # create checks to be invalidated
+
+    r = client.delete(f"/api/evidence/{target}")
+    assert r.status_code == 200
+    assert r.json()["status"] == "deleted"
+
+    after = client.get(f"/api/cases/{nw}").json()
+    assert all(e["id"] != target for e in after["evidence"])
+    assert len(after["evidence"]) == len(before) - 1
+    # Deleting evidence invalidates downstream checks.
+    assert after["checks"] == []
+
+    # Deleting a non-existent id 404s.
+    assert client.delete("/api/evidence/ev_nonexistent").status_code == 404
+
+
+def test_remove_file_keeps_record(client):
+    cases = {c["client_name"]: c for c in client.get("/api/cases").json()}
+    nw = cases["Northwind Logistics"]["id"]
+    # Upload a file for a new kind so we have an evidence record with a sha256.
+    files = {"file": ("test.txt", b"hello sample", "text/plain")}
+    up = client.post(f"/api/cases/{nw}/uploads", data={"kind": "msa"}, files=files)
+    assert up.status_code == 200
+    ev_id = up.json()["id"]
+    assert up.json()["sha256"]
+
+    # Remove just the file.
+    r = client.delete(f"/api/evidence/{ev_id}/file")
+    assert r.status_code == 200
+    assert r.json()["status"] == "file_removed"
+
+    # The record still exists, but without a file/hash.
+    ev = [e for e in client.get(f"/api/cases/{nw}").json()["evidence"] if e["id"] == ev_id]
+    assert len(ev) == 1
+    assert not ev[0].get("sha256")
+
+    # Removing a file when none is attached -> 400.
+    assert client.delete(f"/api/evidence/{ev_id}/file").status_code == 400
 
 
 def test_settings_masks_key(client, monkeypatch):

@@ -81,6 +81,11 @@ class SettingsUpdate(BaseModel):
     base_url: str | None = None
 
 
+class RoiUpdate(BaseModel):
+    hourly_rate_usd: float | None = None
+    human_baseline_minutes: float | None = None
+
+
 # --------------------------------------------------------------------------
 # Health & meta
 # --------------------------------------------------------------------------
@@ -183,6 +188,47 @@ def download_evidence(evidence_id: str) -> FileResponse:
     return FileResponse(stored, filename=ev.get("filename") or stored.name)
 
 
+@app.delete("/api/evidence/{evidence_id}")
+def delete_evidence(evidence_id: str) -> dict[str, Any]:
+    ev = db.get_evidence(evidence_id)
+    if ev is None:
+        raise HTTPException(404, "evidence not found")
+    case_id = ev["case_id"]
+    deleted = db.delete_evidence(evidence_id, actor=_owner(case_id))
+    _unlink_stored_file(deleted, case_id)
+    return {"status": "deleted", "evidence_id": evidence_id,
+            "summary": _case_summary(case_id)}
+
+
+@app.delete("/api/evidence/{evidence_id}/file")
+def remove_evidence_file(evidence_id: str) -> dict[str, Any]:
+    """Remove only the attached file, keeping the document record."""
+    ev = db.get_evidence(evidence_id)
+    if ev is None:
+        raise HTTPException(404, "evidence not found")
+    if not ev.get("sha256"):
+        raise HTTPException(400, "this record has no attached file to remove")
+    case_id = ev["case_id"]
+    removed = db.remove_file(evidence_id, actor=_owner(case_id))
+    _unlink_stored_file(removed, case_id)
+    return {"status": "file_removed", "evidence_id": evidence_id,
+            "summary": _case_summary(case_id)}
+
+
+def _unlink_stored_file(row: dict[str, Any] | None, case_id: str) -> None:
+    """Best-effort delete of the on-disk uploaded file for an evidence row."""
+    if not row or not row.get("sha256"):
+        return
+    fn = row.get("filename") or ""
+    ext = "." + fn.rsplit(".", 1)[-1].lower() if "." in fn else ""
+    stored = UPLOADS_DIR / f"{case_id}_{row['sha256'][:12]}{ext}"
+    try:
+        if stored.exists():
+            stored.unlink()
+    except OSError:
+        pass
+
+
 # --------------------------------------------------------------------------
 # Deterministic checks
 # --------------------------------------------------------------------------
@@ -239,7 +285,7 @@ def concierge_review(case_id: str) -> JSONResponse:
     run = db.add_agent_run(case_id, {
         "agent_name": AGENT_NAME, "provider": result.provider, "model": result.model,
         "status": "success", "prompt": prompt, "answer": result.answer,
-        "trace": result.trace, "error": None,
+        "trace": result.trace, "error": None, "duration_ms": result.duration_ms,
     })
     return JSONResponse(content={
         "status": "success",
@@ -247,6 +293,8 @@ def concierge_review(case_id: str) -> JSONResponse:
         "structure": result.structure,
         "run": run,
         "summary": _case_summary(case_id),
+        "roi_run": db.roi_for_run(result.duration_ms),
+        "roi_summary": db.roi_summary(),
     })
 
 
@@ -268,6 +316,14 @@ def approve_kickoff(case_id: str) -> dict[str, Any]:
     case = db.get_case(case_id)
     if case is None:
         raise HTTPException(404, "case not found")
+
+    # Idempotent: if already approved, just make sure the stage reflects it
+    # (reconciles any legacy record left at stage 7 by an earlier version).
+    if case.get("status") == "kickoff_approved":
+        if case.get("stage") != 8:
+            db.update_case_stage(case_id, 8, actor=_owner(case_id))
+        return {"status": "approved", "summary": _case_summary(case_id)}
+
     summary = _case_summary(case_id)
     reasons: list[str] = []
     if summary["open_blocks"]:
@@ -281,7 +337,9 @@ def approve_kickoff(case_id: str) -> dict[str, Any]:
     if reasons:
         raise HTTPException(409, {"message": "kickoff not approvable", "reasons": reasons,
                                   "summary": summary})
-    db.update_case_stage(case_id, 7, actor=_owner(case_id))
+    # Approving the kickoff gate advances the case into the final stage
+    # (8 = Hypercare to first value). Stage 7 (Client kickoff) is now passed.
+    db.update_case_stage(case_id, 8, actor=_owner(case_id))
     db.set_case_status(case_id, "kickoff_approved", actor=_owner(case_id))
     return {"status": "approved", "summary": _case_summary(case_id)}
 
@@ -333,6 +391,29 @@ def test_connection() -> dict[str, Any]:
 def credits() -> dict[str, Any]:
     """Return credit/usage info where the provider exposes it."""
     return provider.credits()
+
+
+# --------------------------------------------------------------------------
+# ROI (illustrative savings based on your assumptions)
+# --------------------------------------------------------------------------
+@app.get("/api/roi")
+def get_roi() -> dict[str, Any]:
+    return {"settings": db.get_roi_settings(), "summary": db.roi_summary()}
+
+
+@app.post("/api/roi")
+def update_roi(body: RoiUpdate) -> dict[str, Any]:
+    if body.hourly_rate_usd is not None and body.hourly_rate_usd < 0:
+        raise HTTPException(400, "hourly_rate_usd must be >= 0")
+    if body.human_baseline_minutes is not None and body.human_baseline_minutes < 0:
+        raise HTTPException(400, "human_baseline_minutes must be >= 0")
+    db.set_roi_settings(body.hourly_rate_usd, body.human_baseline_minutes)
+    return {"settings": db.get_roi_settings(), "summary": db.roi_summary()}
+
+
+@app.get("/api/roi/summary")
+def roi_summary() -> dict[str, Any]:
+    return db.roi_summary()
 
 
 # --------------------------------------------------------------------------

@@ -1,0 +1,15 @@
+| Role | Color |
+|---|---|
+| App background | #F4F7FB |
+| Sidebar | #111827 |
+| Cards | #FFFFFF |
+| Subtle panels | #F8FAFC |
+| Borders | #E2E8F0 |
+| Main text | #172033 |
+| Secondary text | #64748B |
+| Primary actions | #4F46E5 |
+| Workflow accent | #0F9D8A |
+| Agent / AI accent | #8B5CF6 |
+| Pass | #16A34A |
+| Review | #D97706 |
+| Block | #DC2626 |

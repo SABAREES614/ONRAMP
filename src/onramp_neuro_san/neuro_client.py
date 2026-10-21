@@ -41,6 +41,7 @@ class RunResult:
     trace: list[dict[str, Any]] = field(default_factory=list)
     provider: str = ""
     model: str = ""
+    duration_ms: int = 0
 
 
 def _message_text(msg: dict[str, Any]) -> str:
@@ -85,11 +86,16 @@ def run_network(prompt: str, sly_data: dict[str, Any] | None = None,
             "text": prompt,
         },
         "sly_data": merged_sly,
+        # Ask the server for the full agent conversation (all specialist turns
+        # and the final AI answer), not just framework/progress messages.
+        "chat_filter": {"chat_filter_type": "MAXIMAL"},
     }
 
     trace: list[dict[str, Any]] = []
     final_answer = ""
     final_structure: dict[str, Any] | None = None
+    import time
+    _t0 = time.perf_counter()
 
     try:
         for chat_response in session.streaming_chat(request):
@@ -147,6 +153,7 @@ def run_network(prompt: str, sly_data: dict[str, Any] | None = None,
         trace=trace,
         provider=active.provider,
         model=active.model,
+        duration_ms=int((time.perf_counter() - _t0) * 1000),
     )
 
 
