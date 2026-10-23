@@ -152,15 +152,15 @@ function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';cl
 async function api(path,opts){const r=await fetch('/api'+path,Object.assign({headers:{'Content-Type':'application/json'}},opts||{}));let b=null;try{b=await r.json()}catch(e){}if(!r.ok){const msg=(b&&(b.detail&&b.detail.message||b.detail||b.error))||r.statusText;const e=new Error(typeof msg==='string'?msg:JSON.stringify(msg));e.body=b;e.status=r.status;throw e}return b}
 
 const AGENTS=[
- {id:'onboarding_concierge',ab:'OC',c:'#5b8cff',role:'Front-man'},
- {id:'deal_handover_agent',ab:'DH',c:'#43c3ff',role:'Specialist'},
- {id:'document_intelligence_agent',ab:'DI',c:'#21d4b4',role:'Specialist'},
- {id:'compliance_agent',ab:'CO',c:'#ffb547',role:'Specialist'},
- {id:'legal_msa_validator',ab:'LG',c:'#b36bff',role:'Specialist'},
- {id:'commercial_setup_agent',ab:'CB',c:'#ff7ab6',role:'Specialist'},
- {id:'delivery_mobilisation_agent',ab:'DM',c:'#2fd27a',role:'Specialist'},
- {id:'access_provisioning_agent',ab:'AP',c:'#7aa2ff',role:'Specialist'},
- {id:'client_comms_agent',ab:'CC',c:'#43e0d0',role:'Specialist'}];
+ {id:'onboarding_concierge',ab:'OC',c:'#5b8cff',role:'Front-man',name:'Onboarding Concierge',tools:['Deal Handover Agent','Document Intelligence Agent','Compliance Agent','Legal MSA Validator','Commercial Setup Agent','Delivery Mobilisation Agent','Access Provisioning Agent','Client Communications Agent']},
+ {id:'deal_handover_agent',ab:'DH',c:'#43c3ff',role:'Specialist',name:'Deal Handover Agent',tools:[]},
+ {id:'document_intelligence_agent',ab:'DI',c:'#21d4b4',role:'Specialist',name:'Document Intelligence Agent',tools:['Checklist Tracker (coded tool)']},
+ {id:'compliance_agent',ab:'CO',c:'#ffb547',role:'Specialist',name:'Compliance Agent',tools:['Compliance Screen (coded tool)']},
+ {id:'legal_msa_validator',ab:'LG',c:'#b36bff',role:'Specialist',name:'Legal MSA Validator',tools:['Clause Playbook (coded tool)']},
+ {id:'commercial_setup_agent',ab:'CB',c:'#ff7ab6',role:'Specialist',name:'Commercial Setup Agent',tools:['PO Reconciler (coded tool)']},
+ {id:'delivery_mobilisation_agent',ab:'DM',c:'#2fd27a',role:'Specialist',name:'Delivery Mobilisation Agent',tools:[]},
+ {id:'access_provisioning_agent',ab:'AP',c:'#7aa2ff',role:'Specialist',name:'Access Provisioning Agent',tools:[]},
+ {id:'client_comms_agent',ab:'CC',c:'#43e0d0',role:'Specialist',name:'Client Communications Agent',tools:[]}];
 const STAGES=['Deal handover','Document collection','Compliance & KYB','MSA/SOW validation','Commercial & billing','Mobilisation & access','Client kickoff','Hypercare to first value'];
 let STATE={cases:[],caseId:null};
 
@@ -172,8 +172,9 @@ const PAGES=[
  {id:'humanreview',grp:'Operate',title:'Human review',render:renderHuman},
  {id:'audit',grp:'Operate',title:'Audit history',render:renderAudit},
  {id:'network',grp:'Network',title:'Agent network',render:renderNetwork},
- {id:'architecture',grp:'Network',title:'Architecture',render:renderArchitecture},
- {id:'settings',grp:'Configure',title:'Settings · API keys',render:renderSettings}];
+ {id:'architecture',grp:'Network',title:'ONRAMP Architecture',render:renderArchitecture},
+ {id:'settings',grp:'Configure',title:'Settings · API keys',render:renderSettings},
+ {id:'help',grp:'Help',title:'Help & guide',render:renderHelp}];
 
 function buildNav(){let h='',g='';PAGES.forEach((p,i)=>{if(p.grp!==g){g=p.grp;h+=`<div class="navgrp">${g}</div>`}h+=`<div class="navi" data-id="${p.id}" onclick="go('${p.id}')"><span class="n">${i+1}</span>${p.title}</div>`});$('#nav').innerHTML=h}
 let CUR=null;
@@ -189,6 +190,10 @@ async function renderPortfolio(v){const cases=await api('/cases');STATE.cases=ca
  const g=cases.filter(c=>c.summary.gate_clear).length,b=cases.filter(c=>c.summary.open_blocks>0).length,r=cases.length-g-b;
  v.innerHTML=ph('Live tracker','Onboarding portfolio','Every closed-won deal in onboarding. Deterministic checks and a real Neuro-SAN Concierge review gate each kickoff. All starter clients are fictional.',
    `<button class="btn pri" onclick="newCaseModal()">+ New closed-won case</button>`)
+ +`<div class="card" style="margin-bottom:14px;border-left:4px solid var(--a1)">
+    <h3>Welcome to ONRAMP</h3>
+    <p class="muted" style="font-size:13px">ONRAMP turns a newly signed ("closed-won") client into a governed, kickoff-ready onboarding case. It runs an AI agent network (the Concierge and its specialists) alongside deterministic rule checks and named human approvals — so every onboarding is faster, consistent, auditable, and safe. Use the Portfolio below to open a case, collect evidence, run the AI review, and track each client to go-live.</p>
+   </div>`
  +`<div class="grid g4" style="margin-bottom:14px">${kpi(cases.length,'Active onboardings')}${kpi(g,'Checks clear','ok')}${kpi(b,'Blocked','bad')}${kpi(r,'Needs review','warn')}</div>
  <div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>Client</th><th>Segment</th><th>TCV</th><th>Stage</th><th>Checks</th><th>Agent run</th><th>Owner</th></tr></thead><tbody>
  ${cases.map(c=>{const s=c.summary;const chk=s.block?`<span class="pill bad">${s.open_blocks} block</span>`:s.open_reviews?`<span class="pill warn">${s.open_reviews} review</span>`:s.pass?`<span class="pill ok">clear</span>`:'<span class="pill">not run</span>';
@@ -209,14 +214,14 @@ async function createCase(){const body={client_name:$('#nc_name').value.trim(),s
 async function pickCaseId(){const cases=await api('/cases');STATE.cases=cases;if(STATE.caseId&&cases.some(c=>c.id===STATE.caseId))return STATE.caseId;return cases[0]&&cases[0].id}
 async function renderCase(v){const id=await pickCaseId();if(!id){v.innerHTML='<div class="card">No cases yet. Create one from Portfolio.</div>';return}
  const c=await api('/cases/'+id);STATE.caseId=id;const s=c.summary;
- const kinds=['msa','sow','order_form','po','dpa'];const labels={msa:'Executed MSA',sow:'SOW',order_form:'Order form',po:'Purchase order',dpa:'DPA'};
+ const kinds=['msa','sow','order_form','po','dpa'];const labels={msa:'Executed Master Services Agreement (MSA)',sow:'Statement of Work (SOW)',order_form:'Order Form',po:'Purchase Order (PO)',dpa:'Data Processing Agreement (DPA)'};
  v.innerHTML=ph('Case workspace',esc(c.client_name),`${c.id} · ${esc(c.segment)} · TCV ${esc(c.tcv)} · owner ${esc(c.delivery_owner||'—')}`,
    `<div class="row">${caseSwitcher(id)}<button class="btn pri" onclick="runChecks('${id}')">Run evidence checks</button></div>`)
  +`<div class="grid g4" style="margin-bottom:14px">${kpi(s.pass,'Pass','ok')}${kpi(s.review,'Review','warn')}${kpi(s.block,'Block','bad')}${kpi(s.has_successful_run?'✓':'—','Concierge run',s.has_successful_run?'ok':'')}</div>
  <div class="grid g21">
   <div class="card"><h3>Evidence</h3>
    <table><thead><tr><th>Document</th><th>Facts</th><th>Hash</th><th style="text-align:right">Actions</th></tr></thead><tbody>
-   ${c.evidence.length?c.evidence.map(e=>`<tr><td><b>${esc(e.label||e.kind)}</b><div class="dim" style="font-size:11px">${esc(e.kind)}</div></td><td class="muted mono wrap" style="font-size:11px;max-width:300px">${esc(JSON.stringify(e.facts||{}))}</td><td>${e.sha256?`<span class="pill ok" title="${e.sha256}">sha256</span> <a href="/api/evidence/${e.id}/download">file</a>`:'<span class="dim">manual</span>'}</td><td style="text-align:right;white-space:nowrap"><button class="btn sm" title="Upload a file for ${esc(e.kind)}" onclick="rowUpload('${id}','${esc(e.kind)}')">⬆ Upload</button> ${e.sha256?`<button class="btn sm" title="Remove the attached file (keep the record)" onclick="removeFile('${id}','${e.id}','${esc(e.label||e.kind).replace(/'/g,"")}')">Remove file</button> `:''}<button class="btn sm" title="Delete this document record" onclick="deleteEvidence('${id}','${e.id}','${esc(e.label||e.kind).replace(/'/g,"")}')">✕</button></td></tr>`).join(''):'<tr><td colspan="4" class="dim">No evidence yet.</td></tr>'}
+   ${c.evidence.length?c.evidence.map(e=>`<tr><td><b>${esc(labels[e.kind]||e.label||e.kind)}</b>${e.filename?`<div class="dim" style="font-size:11px">${esc(e.filename)}</div>`:''}</td><td class="muted mono wrap" style="font-size:11px;max-width:300px">${esc(JSON.stringify(e.facts||{}))}</td><td>${e.sha256?`<span class="pill ok" title="${e.sha256}">sha256</span> <a href="/api/evidence/${e.id}/download">file</a>`:'<span class="dim">manual</span>'}</td><td style="text-align:right;white-space:nowrap"><button class="btn sm" title="Upload a file for ${esc(labels[e.kind]||e.kind)}" onclick="rowUpload('${id}','${esc(e.kind)}')">⬆ Upload</button> ${e.sha256?`<button class="btn sm" title="Remove the attached file (keep the record)" onclick="removeFile('${id}','${e.id}','${esc(labels[e.kind]||e.label||e.kind).replace(/'/g,"")}')">Remove file</button> `:''}<button class="btn sm" title="Delete this document record" onclick="deleteEvidence('${id}','${e.id}','${esc(labels[e.kind]||e.label||e.kind).replace(/'/g,"")}')">✕</button></td></tr>`).join(''):'<tr><td colspan="4" class="dim">No evidence yet.</td></tr>'}
    </tbody></table>
    <input type="file" id="rowUploadInput" style="display:none" onchange="rowUploadChosen('${id}')">
    <div class="sep"></div><h4>Add a new document</h4>
@@ -258,7 +263,7 @@ async function renderReview(v){const id=await pickCaseId();if(!id){v.innerHTML='
       <div><label class="f" style="margin-top:0">Manual baseline per review (minutes)</label>
         <input id="roi_base" type="number" min="1" value="${rs.human_baseline_minutes}" style="width:120px" onchange="saveRoi()"></div>
     </div>
-    <div class="dim" style="font-size:11px;max-width:320px">AI time is measured (real wall-clock). Human time is your editable assumption. Figures are an illustrative ROI aid, not a measured human-time claim.</div>
+    <div class="dim" style="font-size:11px;max-width:360px">AI processing time is measured using actual execution time. Human effort is based on an editable estimate that can be adjusted as needed. The displayed figures are intended to illustrate potential ROI and should not be considered as measured human effort.</div>
    </div>
    <div class="sep"></div>
    <div id="roiAccum">${roiAccumHtml(roi.summary)}</div>
@@ -272,8 +277,9 @@ async function renderReview(v){const id=await pickCaseId();if(!id){v.innerHTML='
     <div class="card" style="margin-top:14px"><h3>Run history</h3>${runs.length?runs.map(r=>`<div class="lc ${r.status==='success'?'done':'hold'}"><div style="flex:1"><b>${r.status==='success'?'✓ success':'✕ error'}</b> <span class="dim" style="font-size:11px">${esc(r.model||'')}</span><div class="muted" style="font-size:11px">${esc((r.created_at||'').replace('T',' '))}</div></div></div>`).join(''):'<div class="dim">—</div>'}</div></div></div>`}
 function renderRun(r){if(!r)return '<div class="dim">—</div>';if(r.status!=='success')return `<div class="note b"><b>Run failed.</b> ${esc(r.error||'')}</div><div class="dim" style="font-size:11px">Provider ${esc(r.provider||'?')} · model ${esc(r.model||'?')}</div>`;
  return `<div class="row" style="margin-bottom:8px"><span class="pill ok">success</span><span class="pill info mono">${esc(r.model||'')}</span><span class="pill mono">${esc(r.provider||'')}</span></div><pre>${esc(r.answer||'(no text)')}</pre>`}
-function renderTrace(r){if(!r||!r.trace||!r.trace.length)return '<div class="dim">No trace captured.</div>';return r.trace.map(m=>`<div class="lc"><div class="av" style="background:${agentColor(m.origin)}">${agentAb(m.origin)}</div><div style="flex:1;min-width:0"><div style="font-size:11px"><b>${esc(m.origin||m.type_name||'')}</b> <span class="dim">${esc(m.type_name||'')}</span></div><div class="muted mono" style="font-size:11px;white-space:pre-wrap;word-break:break-word">${esc((m.text||'').slice(0,600))}</div>${m.structure?`<pre style="margin-top:4px;max-height:160px">${esc(JSON.stringify(m.structure,null,2))}</pre>`:''}</div></div>`).join('')}
+function renderTrace(r){if(!r||!r.trace||!r.trace.length)return '<div class="dim">No trace captured.</div>';return r.trace.map(m=>`<div class="lc"><div class="av" style="background:${agentColor(m.origin)}">${agentAb(m.origin)}</div><div style="flex:1;min-width:0"><div style="font-size:11px"><b>${esc(agentName(m.origin)||m.type_name||'')}</b> <span class="dim">${esc(m.type_name||'')}</span></div><div class="muted mono" style="font-size:11px;white-space:pre-wrap;word-break:break-word">${esc((m.text||'').slice(0,600))}</div>${m.structure?`<pre style="margin-top:4px;max-height:160px">${esc(JSON.stringify(m.structure,null,2))}</pre>`:''}</div></div>`).join('')}
 function agentAb(id){const a=AGENTS.find(x=>x.id===id);return a?a.ab:'··'}
+function agentName(id){const a=AGENTS.find(x=>x.id===id);return a?a.name:(id||'')}
 function agentColor(id){const a=AGENTS.find(x=>x.id===id);return a?a.c:'#5d6d8e'}
 function slyPreview(c){const rows=[['case_id',c.id]];const tcv=c.tcv||'';if(tcv)rows.push(['contract_value',mask(tcv)]);rows.push(['screening_records','{entity: •••}']);rows.push(['<api key>','•••• (from Settings)']);return rows.map(r=>`<div class="slyrow"><span class="warn">${esc(r[0])}</span><span class="dim">${esc(r[1])}</span></div>`).join('')+'<div class="ok" style="font-size:11px;margin-top:6px">✓ never placed in prompts</div>'}
 function mask(s){return String(s).replace(/[0-9]/g,'•')}
@@ -327,20 +333,47 @@ async function saveDisp(cid){const reviewer=$('#d_rev').value.trim();if(!reviewe
 
 /* ---------- Audit ---------- */
 async function renderAudit(v){const id=await pickCaseId();if(!id){v.innerHTML='<div class="card">No cases yet.</div>';return}
- const rows=await api('/cases/'+id+'/audit');STATE.caseId=id;
- v.innerHTML=ph('Append-only history','Audit history','Every action on this case, most recent first.',caseSwitcher(id))
- +`<div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Detail</th></tr></thead><tbody>
- ${rows.map(r=>`<tr><td class="mono" style="font-size:11px">${esc((r.created_at||'').replace('T',' '))}</td><td class="muted">${esc(r.actor)}</td><td><span class="tag">${esc(r.action)}</span></td><td class="muted mono" style="font-size:11px">${esc(JSON.stringify(r.detail||{}))}</td></tr>`).join('')}
+ const rows=await api('/cases/'+id+'/audit');STATE.caseId=id;STATE.audit=rows;
+ const mode=STATE.auditMode||'user';
+ v.innerHTML=ph('Append-only history','Audit history','Every action on this case, most recent first. Switch perspective to see a plain-language explanation or the technical details.',
+   `<div class="row">${caseSwitcher(id)}<div class="row" style="gap:4px;border:1px solid var(--line);border-radius:9px;padding:3px">
+      <button class="btn sm ${mode==='user'?'pri':''}" onclick="setAuditMode('user')">User perspective</button>
+      <button class="btn sm ${mode==='dev'?'pri':''}" onclick="setAuditMode('dev')">Developer perspective</button>
+    </div></div>`)
+ +`<div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Details (${mode==='user'?'user perspective':'developer perspective'})</th></tr></thead><tbody>
+ ${rows.map(r=>`<tr><td class="mono" style="font-size:11px">${esc((r.created_at||'').replace('T',' '))}</td><td class="muted">${esc(r.actor)}</td><td>${mode==='user'?esc(humanizeAction(r.action)):`<span class="tag">${esc(r.action)}</span>`}</td><td class="${mode==='dev'?'muted mono':'muted'}" style="font-size:${mode==='dev'?'11':'12.5'}px">${mode==='user'?esc(humanizeAudit(r)):esc(JSON.stringify(r.detail||{}))}</td></tr>`).join('')}
  </tbody></table></div>`}
+function setAuditMode(m){STATE.auditMode=m;go('audit')}
+function humanizeAction(a){const m={case_created:'Case created',case_seeded:'Case loaded',evidence_added:'Document added',evidence_deleted:'Document deleted',file_removed:'File removed',downstream_invalidated:'Checks reset',checks_run:'Checks run',check_dispositioned:'Reviewer decision',agent_run:'AI review',signoff_recorded:'Sign-off recorded',stage_advanced:'Stage advanced',status_changed:'Status changed'};return m[a]||a.replace(/_/g,' ')}
+function humanizeAudit(r){const d=r.detail||{};const a=r.action;
+ switch(a){
+  case 'case_created': return `A new onboarding case was created for ${d.client_name||'the client'}.`;
+  case 'case_seeded': return `${d.client_name||'A sample client'} was loaded as a starter case.`;
+  case 'evidence_added': return `A ${docName(d.kind)} was added${d.sha256?' (file attached)':''}.`;
+  case 'evidence_deleted': return `The ${docName(d.kind)} record was deleted.`;
+  case 'file_removed': return `The attached file was removed from the ${docName(d.kind)} (the record was kept).`;
+  case 'downstream_invalidated': return `Because the evidence changed, previous checks, AI reviews and sign-offs were reset and must be re-run.`;
+  case 'checks_run': return `Automated eligibility checks were run (${d.count!=null?d.count+' checks':'all checks'}).`;
+  case 'check_dispositioned': return `A reviewer marked "${d.check||'a check'}" as ${d.disposition||'reviewed'}${d.rationale?' — '+d.rationale:''}.`;
+  case 'agent_run': return `The AI Concierge review ${d.status==='success'?'completed successfully':'failed and was recorded'}${d.model?' using '+d.model:''}.`;
+  case 'signoff_recorded': return `A named sign-off was recorded for the "${d.gate||'gate'}" step${d.note?' — '+d.note:''}.`;
+  case 'stage_advanced': return `The onboarding moved to stage ${d.stage!=null?d.stage:'the next stage'}.`;
+  case 'status_changed': return `The case status changed to "${d.status||'updated'}".`;
+  default: return a.replace(/_/g,' ')+(Object.keys(d).length?': '+JSON.stringify(d):'');
+ }}
+function docName(kind){const m={msa:'Executed Master Services Agreement (MSA)',sow:'Statement of Work (SOW)',order_form:'Order Form',po:'Purchase Order (PO)',dpa:'Data Processing Agreement (DPA)'};return m[kind]||kind||'document'}
 
 /* ---------- Agent network ---------- */
 async function renderNetwork(v){const W=960,H=360,fx=480,fy=48;const sp=AGENTS.slice(1);const n=sp.length;
  const pos=sp.map((a,i)=>({a,x:70+i*((W-140)/(n-1)),y:220}));
  const edges=pos.map(p=>`<path class="edge" d="M${fx},${fy+24} C${fx},130 ${p.x},130 ${p.x},${p.y-24}"/>`).join('');
- const nodes=pos.map(p=>`<g class="node"><rect x="${p.x-46}" y="${p.y-24}" width="92" height="48" rx="11" style="fill:var(--panel2)" stroke="${p.a.c}" stroke-width="2"/><text x="${p.x}" y="${p.y-2}" text-anchor="middle" font-size="13" font-weight="700" fill="${p.a.c}">${p.a.ab}</text><text x="${p.x}" y="${p.y+14}" text-anchor="middle" font-size="8.5" fill="var(--text)">${p.a.id.replace('_agent','').replace('_',' ').slice(0,12)}</text></g>`).join('');
- v.innerHTML=ph('neuro-san network: onramp_onboarding','Agent network','The real served network: an Onboarding Concierge front-man delegating to eight specialists via AAOSA. Four deterministic Python coded tools do the exact work.')
+ const wrapName=(nm)=>{const w=nm.replace(' Agent','').split(' ');const mid=Math.ceil(w.length/2);return [w.slice(0,mid).join(' '),w.slice(mid).join(' ')]};
+ const nodes=pos.map(p=>{const ln=wrapName(p.a.name);return `<g class="node"><title>${esc(p.a.name)}</title><rect x="${p.x-54}" y="${p.y-26}" width="108" height="52" rx="11" style="fill:var(--panel2)" stroke="${p.a.c}" stroke-width="2"/><text x="${p.x}" y="${p.y-2}" text-anchor="middle" font-size="9" font-weight="700" fill="${p.a.c}">${esc(ln[0])}</text><text x="${p.x}" y="${p.y+11}" text-anchor="middle" font-size="9" font-weight="700" fill="${p.a.c}">${esc(ln[1])}</text></g>`}).join('');
+ const agentList=AGENTS.map(a=>`<div class="lc"><div class="av" style="background:${a.c}">${a.ab}</div><div style="flex:1;min-width:0"><b>${esc(a.name)}</b> <span class="pill vio" style="font-size:10px">${esc(a.role)}</span>${a.tools&&a.tools.length?`<div class="dim" style="font-size:11px">Calls: ${a.tools.map(esc).join(', ')}</div>`:''}</div></div>`).join('');
+ v.innerHTML=ph('neuro-san network: onramp_onboarding','Agent network','The real served network: an Onboarding Concierge front-man delegating to eight specialist agents via AAOSA. Four deterministic Python coded tools (services) do the exact work.')
  +`<div class="card"><svg viewBox="0 0 ${W} ${H}" width="100%">${edges}${nodes}<g class="node"><rect x="${fx-100}" y="${fy-24}" width="200" height="48" rx="12" fill="url(#g)"/><defs><linearGradient id="g"><stop offset="0" stop-color="#5b8cff"/><stop offset="1" stop-color="#b36bff"/></linearGradient></defs><text x="${fx}" y="${fy+4}" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">Onboarding Concierge</text></g></svg>
- <div class="note">Coded tools: checklist_tracker, compliance_screen, clause_playbook, po_reconciler — each reads private values from sly_data and returns only non-sensitive results.</div></div>`}
+ <div class="note">Deterministic coded-tool services: Checklist Tracker, Compliance Screen, Clause Playbook, and PO Reconciler — each reads private values from the sly_data channel and returns only non-sensitive results.</div></div>
+ <div class="card" style="margin-top:14px"><h3>Agents &amp; services (full names)</h3>${agentList}</div>`}
 
 /* ---------- Architecture (current, single deployment) ---------- */
 async function renderArchitecture(v){
@@ -398,7 +431,7 @@ async function renderArchitecture(v){
 
   <text x="34" y="534" font-size="10" fill="#8fa0c0">Solid = runtime call · dashed = config/governance boundary · green box = everything runs on one local machine; only the LLM call leaves it.</text>
  </svg>`;
- v.innerHTML=ph('Current architecture · single deployment','Application architecture',
+ v.innerHTML=ph('Current architecture · single deployment','ONRAMP Architecture',
    'The as-built architecture: two local Python processes (ONRAMP app on :8000, Neuro-SAN server on :8080) plus a remote LLM provider you choose. One concrete deployment — not three cloud diagrams. Full write-up in docs/ARCHITECTURE.md.',
    `<div class="row"><span class="pill ${nsOk?'ok':'bad'}"><span class="dot"></span>neuro-san ${nsOk?'connected':'offline'}</span><span class="pill ${keyOk?'ok':'warn'}">provider ${esc(prov)}${keyOk?' ✓':' (no key)'}</span></div>`)
  +`<div class="card">${svg}</div>
@@ -421,6 +454,7 @@ async function renderSettings(v){const s=await api('/settings');const ks=s.key_s
  v.innerHTML=ph('Configure','Settings · LLM API keys','Save remote-provider keys and choose the active provider/model. Keys are stored locally in .env (git-ignored), masked here, and delivered to the network via the private sly_data channel — never placed in prompts. No local models are used.','')
  +`<div class="grid g12"><div class="card"><h3>Active provider</h3>
    <label class="f">Provider</label><select id="set_prov" onchange="onProvChange()">${s.providers.map(p=>`<option value="${p.key}" ${p.key===s.active.provider?'selected':''}>${esc(p.label)}</option>`).join('')}</select>
+   <div class="dim" style="font-size:11px;margin-top:4px">Any compatible API key can be configured and used within the application. OpenRouter offers a free API key to get started.</div>
    <label class="f">Model</label><input id="set_model" value="${esc(s.active.model)}"><div class="dim" id="set_modelhelp" style="font-size:11px;margin-top:3px"></div>
    <label class="f">Base URL</label><input id="set_base" value="${esc(s.active.base_url)}">
    <label class="f">API key ${s.active.has_key?`<span class="ok">(configured: ${esc(s.active.masked_key)})</span>`:'<span class="bad">(not set)</span>'}</label>
@@ -460,6 +494,66 @@ async function loadCredits(){const box=$('#creditBox');if(!box)return;box.innerH
 
 /* ---------- Header status ---------- */
 async function refreshHeader(){try{const h=await api('/health');$('#provPill').textContent='provider: '+h.provider+(h.provider_key_configured?' ✓':' (no key)');$('#provPill').className='pill '+(h.provider_key_configured?'ok':'warn');const ns=h.neuro_san||{};$('#nsPill').innerHTML='<span class="dot"></span>neuro-san: '+(ns.reachable?'connected':'offline');$('#nsPill').className='pill '+(ns.reachable?'ok':'bad')}catch(e){}}
+
+/* ---------- Help & guide ---------- */
+function helpStep(n,title,body,go_id,go_label){return `<div class="lc" style="align-items:flex-start"><div class="av" style="background:var(--a1)">${n}</div><div style="flex:1"><b>${title}</b><div class="muted" style="font-size:12.5px;margin-top:2px">${body}</div>${go_id?`<button class="btn sm" style="margin-top:8px" onclick="go('${go_id}')">${go_label||'Open'} →</button>`:''}</div></div>`}
+function faq(q,a){return `<div class="lc" style="flex-direction:column;align-items:stretch;cursor:pointer" onclick="this.querySelector('.faq-a').style.display=this.querySelector('.faq-a').style.display==='none'?'block':'none'"><b>${q}</b><div class="faq-a muted" style="font-size:12.5px;margin-top:6px;display:none">${a}</div></div>`}
+async function renderHelp(v){
+ let configured=false,provider='';try{const h=await api('/health');configured=h.provider_key_configured;provider=h.provider}catch(e){}
+ v.innerHTML=ph('Getting started','Help & guide',
+   'New to ONRAMP? This page walks you through what the app does and how to take a client from a signed deal all the way to kickoff. Everything here uses fictional sample data, so feel free to explore.')
+ +`<div class="grid g3" style="margin-bottom:14px">
+    ${kpi('8','Lifecycle stages','from handoff to first value')}
+    ${kpi('9','AI agents','1 Concierge + 8 specialists')}
+    ${kpi(configured?'Ready':'Set key','LLM provider',configured?'ok':'warn')}
+   </div>
+   ${configured?'':`<div class="note w"><b>First, add an API key.</b> The AI Concierge review needs a language-model provider. Go to <b>Settings · API keys</b>, pick a provider (OpenRouter offers a free key), paste your key, and click <b>Test connection</b>. <button class="btn sm" style="margin-top:8px" onclick="go('settings')">Open Settings →</button></div>`}
+ <div class="grid g2">
+  <div class="card"><h3>What is ONRAMP?</h3>
+   <p class="muted" style="font-size:13px">When a sales deal is won, the real work of onboarding the client begins — collecting documents, checking compliance, validating contracts, and getting everyone ready for kickoff. ONRAMP coordinates this with:</p>
+   <div style="margin-top:10px">
+    <div class="lc"><div class="av" style="background:var(--a3)">AI</div><div><b>An AI agent network</b><div class="muted" style="font-size:12px">The Onboarding Concierge delegates to eight specialist agents to review your case and surface findings.</div></div></div>
+    <div class="lc"><div class="av" style="background:var(--a2)">✓</div><div><b>Deterministic checks</b><div class="muted" style="font-size:12px">Rule-based checks (no AI) that pass, flag for review, or block — so decisions are consistent and explainable.</div></div></div>
+    <div class="lc"><div class="av" style="background:var(--a1)">👤</div><div><b>Named human approvals</b><div class="muted" style="font-size:12px">People sign off the key gates. The AI assists; humans decide. Every action is written to an audit trail.</div></div></div>
+   </div>
+  </div>
+  <div class="card"><h3>Jump to a section</h3>
+   <div class="row" style="gap:8px">
+    <button class="btn sm" onclick="go('portfolio')">Portfolio</button>
+    <button class="btn sm" onclick="go('case')">Case workspace</button>
+    <button class="btn sm" onclick="go('review')">Concierge review</button>
+    <button class="btn sm" onclick="go('lifecycle')">Lifecycle board</button>
+    <button class="btn sm" onclick="go('humanreview')">Human review</button>
+    <button class="btn sm" onclick="go('audit')">Audit history</button>
+    <button class="btn sm" onclick="go('network')">Agent network</button>
+    <button class="btn sm" onclick="go('architecture')">ONRAMP Architecture</button>
+    <button class="btn sm" onclick="go('settings')">Settings</button>
+   </div>
+   <div class="sep"></div>
+   <h4>Tip</h4>
+   <p class="muted" style="font-size:12.5px">Use the ☀/☾ button in the top bar to switch between light and dark mode. The pill in the top bar shows whether the AI network is connected and whether a provider key is set.</p>
+  </div>
+ </div>
+ <div class="card" style="margin-top:14px"><h3>How to onboard a client, step by step</h3>
+  ${helpStep(1,'Open or create a case','Go to the <b>Portfolio</b> to see all onboarding cases. Open a sample client (e.g. Northwind Logistics) or click <b>+ New closed-won case</b> to add your own.','portfolio','Go to Portfolio')}
+  ${helpStep(2,'Collect the evidence','In the <b>Case workspace</b>, add the required documents (MSA, SOW, Order Form, Purchase Order, DPA). Use <b>⬆ Upload</b> on each row to attach a file, or add structured facts. New? Download the sample files at the bottom of the page to see what each looks like.','case','Go to Case workspace')}
+  ${helpStep(3,'Run the automated checks','Click <b>Run evidence checks</b>. ONRAMP runs rule-based checks that mark each item <span class="pill ok">PASS</span>, <span class="pill warn">REVIEW</span>, or <span class="pill bad">BLOCK</span>. Missing documents block; ambiguous items need a human review.','case','Open Case workspace')}
+  ${helpStep(4,'Run the AI Concierge review','On <b>Concierge review</b>, click <b>Run Concierge review</b>. The AI agent network analyses the case and returns findings and a raw trace. Set an hourly rate to see the illustrative ROI (time and cost saved). This is a real AI call — no key, no run.','review','Go to Concierge review')}
+  ${helpStep(5,'Record sign-offs on the Lifecycle board','On the <b>Lifecycle board</b>, record the named sign-offs in order (handoff, compliance, counsel, finance, mobilisation). The stepper shows progress through the eight stages.','lifecycle','Go to Lifecycle board')}
+  ${helpStep(6,'Clear exceptions in Human review','In <b>Human review</b>, disposition every REVIEW item with a named reviewer and a reason. A "hold" does not clear an item — only an explicit clearance does.','humanreview','Go to Human review')}
+  ${helpStep(7,'Approve kickoff','Back on the <b>Lifecycle board</b>, once all blocks are resolved, all reviews cleared, and a successful AI review is on record, click <b>Approve kickoff</b>. The case advances to the final stage (Hypercare to first value).','lifecycle','Go to Lifecycle board')}
+  ${helpStep(8,'Review the audit trail','Open <b>Audit history</b> to see every action, newest first. Switch between <b>User perspective</b> (plain language) and <b>Developer perspective</b> (technical detail).','audit','Go to Audit history')}
+ </div>
+ <div class="card" style="margin-top:14px"><h3>Frequently asked questions <span class="dim" style="font-weight:400">— click to expand</span></h3>
+  ${faq('Do I need an API key?','Yes, for the AI Concierge review. Add one on the Settings page. OpenRouter offers a free key to get started, and any OpenAI-compatible provider works. The deterministic checks and the rest of the app work without a key.')}
+  ${faq('Is my API key safe?','Your key is stored locally in a git-ignored file, shown only masked in the UI, and passed to the agents on a private channel (sly_data) — it is never placed in a prompt or sent anywhere except to the provider you choose.')}
+  ${faq('Why is kickoff approval not available yet?','Kickoff approval is enforced: all BLOCK checks must be resolved, all REVIEW checks must be cleared by a named human, and a successful Concierge review must be on record. The Lifecycle board shows exactly what is outstanding.')}
+  ${faq('What does PASS / REVIEW / BLOCK mean?','PASS = the rule is satisfied. REVIEW = ambiguous or outside policy; a named human must decide. BLOCK = a required document or fact is missing; add it and re-run checks.')}
+  ${faq('What happens if I change or delete evidence?','Changing evidence resets the dependent checks, AI reviews and sign-offs for that case, so they must be re-run. This keeps every approval tied to the exact evidence it was based on.')}
+  ${faq('Are the clients and numbers real?','No. All starter clients, documents and figures are fictional and for demonstration only. Do not enter real client, tax, or banking data.')}
+  ${faq('What is the ROI figure based on?','AI processing time is the real measured execution time. Human effort is an editable estimate you set. The figures illustrate potential ROI and should not be read as measured human effort.')}
+ </div>
+ <div class="note">ONRAMP is a local demonstration build on the open-source neuro-san framework (Apache-2.0, by Cognizant AI Lab). It is not a production compliance system.</div>`}
 
 /* ---------- Theme (light default / dark toggle) ---------- */
 function applyTheme(t){document.body.classList.toggle('dark',t==='dark');const b=$('#themeBtn');if(b)b.textContent=t==='dark'?'☀ Light':'☾ Dark'}

@@ -92,7 +92,7 @@ PROVIDERS: dict[str, ProviderSpec] = {
     ),
     "openrouter": ProviderSpec(
         key="openrouter",
-        label="OpenRouter",
+        label="OpenRouter (Free API Key)",
         llm_class="openrouter",
         api_key_env="OPENROUTER_API_KEY",
         api_key_cfg="openrouter_api_key",
