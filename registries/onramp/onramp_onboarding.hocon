@@ -58,9 +58,9 @@ You may, in turn, be called by other agents in the system and have to act as a d
     # per request on the private sly_data channel, never in a prompt.
 # ONRAMP-LLM-CONFIG-START
     "llm_config": {
-        "class": "nvidia",
-        "model_name": "meta/llama-3.3-70b-instruct",
-        "nvidia_base_url": "https://integrate.api.nvidia.com/v1"
+        "class": "openrouter",
+        "model_name": "openai/gpt-4o-mini",
+        "openrouter_api_base": "https://openrouter.ai/api/v1"
     },
     # ONRAMP-LLM-CONFIG-END
 
