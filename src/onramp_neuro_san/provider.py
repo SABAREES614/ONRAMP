@@ -298,12 +298,19 @@ def write_network_llm_config() -> None:
         _LLM_START,
         f'{indent}"llm_config": {{',
         f'{indent}    "class": "{spec.llm_class}",',
-        f'{indent}    "model_name": "{cfg.model}",',
     ]
+    # Build the inner lines, then join so only the last one has no trailing comma.
+    inner = [f'"model_name": "{cfg.model}"']
     if spec.base_url_cfg and cfg.base_url:
-        lines.append(f'{indent}    "{spec.base_url_cfg}": "{cfg.base_url}",')
-    # API key supplied per request via sly_data.llm_config.<api_key_cfg>.
-    lines.append(f'{indent}    "{spec.api_key_cfg}": "sly_data"')
+        inner.append(f'"{spec.base_url_cfg}": "{cfg.base_url}"')
+    # NOTE: the API key is intentionally NOT written here. The provider class
+    # resolves it from the server environment variable (e.g. OPENROUTER_API_KEY),
+    # which the neuro-san server loads from the project .env on startup. This
+    # lets BOTH the ONRAMP app and the nsflow chat UI use the same credentials.
+    # (ONRAMP also passes the key via sly_data, which takes precedence when set.)
+    for i, line in enumerate(inner):
+        comma = "," if i < len(inner) - 1 else ""
+        lines.append(f"{indent}    {line}{comma}")
     lines.append(f"{indent}}},")
     lines.append(f"{indent}{_LLM_END}")
     new_block = "\n".join(lines)

@@ -172,6 +172,7 @@ const PAGES=[
  {id:'humanreview',grp:'Operate',title:'Human review',render:renderHuman},
  {id:'audit',grp:'Operate',title:'Audit history',render:renderAudit},
  {id:'network',grp:'Network',title:'Agent network',render:renderNetwork},
+ {id:'liveflow',grp:'Network',title:'Live agent flow (nsflow)',render:renderLiveFlow},
  {id:'architecture',grp:'Network',title:'ONRAMP Architecture',render:renderArchitecture},
  {id:'settings',grp:'Configure',title:'Settings · API keys',render:renderSettings},
  {id:'help',grp:'Help',title:'Help & guide',render:renderHelp}];
@@ -374,6 +375,36 @@ async function renderNetwork(v){const W=960,H=360,fx=480,fy=48;const sp=AGENTS.s
  +`<div class="card"><svg viewBox="0 0 ${W} ${H}" width="100%">${edges}${nodes}<g class="node"><rect x="${fx-100}" y="${fy-24}" width="200" height="48" rx="12" fill="url(#g)"/><defs><linearGradient id="g"><stop offset="0" stop-color="#5b8cff"/><stop offset="1" stop-color="#b36bff"/></linearGradient></defs><text x="${fx}" y="${fy+4}" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">Onboarding Concierge</text></g></svg>
  <div class="note">Deterministic coded-tool services: Checklist Tracker, Compliance Screen, Clause Playbook, and PO Reconciler — each reads private values from the sly_data channel and returns only non-sensitive results.</div></div>
  <div class="card" style="margin-top:14px"><h3>Agents &amp; services (full names)</h3>${agentList}</div>`}
+
+/* ---------- Live agent flow (nsflow) ---------- */
+const NSFLOW_URL='http://localhost:4173';
+async function renderLiveFlow(v){
+ v.innerHTML=ph('neuro-san visual inspector','Live agent flow (nsflow)',
+   'nsflow is the neuro-san framework\u2019s own visual inspector. It shows the agent network graph and the live message flow and run-time of an execution \u2014 a developer-friendly view of exactly how the Concierge and specialists interact during a run.')
+ +`<div class="grid g2">
+   <div class="card"><h3>Open the live inspector</h3>
+    <p class="muted" style="font-size:13px">nsflow runs as a separate application on its own port, alongside ONRAMP:</p>
+    <div class="row" style="margin-top:8px;gap:16px">
+      <span class="pill info">ONRAMP app · :8000</span>
+      <span class="pill info">Neuro-SAN server · :8080</span>
+      <span class="pill vio">nsflow inspector · :4173</span>
+    </div>
+    <div class="row" style="margin-top:14px"><a class="btn pri" href="${NSFLOW_URL}" target="_blank" rel="noopener">↗ Open nsflow in a new tab</a>
+      <button class="btn" onclick="checkNsflow()">Check availability</button></div>
+    <div id="nsflowStatus" style="margin-top:10px"><span class="dim">Click "Check availability" to test the connection.</span></div>
+   </div>
+   <div class="card"><h3>What you will see there</h3>
+    <ul style="padding-left:18px;color:var(--muted);font-size:12.8px;line-height:1.7">
+      <li>The agent network graph for <b>onramp/onramp_onboarding</b>.</li>
+      <li>The live stream of messages between the Concierge and its specialist agents during a run.</li>
+      <li>Run-time timing and the sequence of tool calls (the "how the run time shows" view).</li>
+    </ul>
+    <div class="note">nsflow opens in a separate browser tab because it is a distinct application with its own interface. It takes ~30 seconds to become available after startup while it builds its front-end. If the link does not load yet, wait a moment and try again.</div>
+   </div>
+  </div>`}
+async function checkNsflow(){const box=$('#nsflowStatus');if(!box)return;box.innerHTML='<span class="spin"></span> checking '+NSFLOW_URL+' …';
+ try{await fetch(NSFLOW_URL,{mode:'no-cors'});box.innerHTML='<span class="pill ok"><span class="dot"></span>nsflow appears to be running at '+NSFLOW_URL+'</span> — use the button above to open it.'}
+ catch(e){box.innerHTML='<div class="note b">nsflow is not reachable at '+NSFLOW_URL+' yet. Make sure the Neuro-SAN window (started by startup.bat) is running; nsflow takes ~30s to build on first start. Then try again.</div>'}}
 
 /* ---------- Architecture (current, single deployment) ---------- */
 async function renderArchitecture(v){
