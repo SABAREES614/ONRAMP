@@ -1,0 +1,299 @@
+ONRAMP Complete Project Walkthrough
+===================================
+What the code builds, how a case moves through it, and where its boundaries are
+As built on 23 October 2026
+
+Purpose and scope
+-----------------
+This guide explains the current ONRAMP repository from the browser experience down to its API, local data store, deterministic checks, Neuro-SAN agent network, configuration, and run scripts. It is intended to help a developer or project stakeholder understand what is implemented today, follow one client case end to end, and distinguish working local demo behavior from integrations that remain planned.
+ONRAMP is a local-first post-sale onboarding workbench. It takes a closed-won deal through evidence collection, structured checks, specialist review, named human decisions, kickoff readiness, and first-value tracking. The application combines ordinary Python rules with a real remote-model-backed Neuro-SAN run. The model contributes a coordinated narrative review; the server-side rules retain control of the approval gate.
+The currently configured runtime uses OpenRouter and the model meta-llama/llama-3.3-70b-instruct. The API key is held in the local, git-ignored .env file and is intentionally not reproduced in this document.
+
+At a glance
+-----------
+Area | As-built implementation
+------------------------------
+User interface | Single-page vanilla HTML, CSS and JavaScript in frontend/index.html
+Application API | FastAPI with Uvicorn on 127.0.0.1:8000
+Agent runtime | Neuro-SAN Studio server on 127.0.0.1:8080
+Agent network | HOCON network onramp/onramp_onboarding: one Concierge, eight specialists, four coded tools
+Persistence | SQLite case store in data/onramp.db; uploads in data/uploads/
+Model service | Remote provider selected in Settings; currently OpenRouter
+Main control | Evidence checks and kickoff eligibility are evaluated by Python code in the app tier
+
+
+Contents
+--------
+* 1. Product flow and lifecycle
+* 2. The browser workspace
+* 3. Case and evidence data
+* 4. Deterministic checks and approval logic
+* 5. Concierge review and agent network
+* 6. Architecture and request lifecycle
+* 7. Data storage, audit, and privacy boundaries
+* 8. ROI view
+* 9. API map
+* 10. Running the project
+* 11. Demo scenarios
+* 12. What is implemented and what remains outside scope
+* 13. Source code map
+
+1. Product flow and lifecycle
+-----------------------------
+A case represents one closed-won deal. The lifecycle is shown as eight stages. It describes the business journey; it is not an automated integration pipeline. Users record evidence and human attestations in the app, the app runs deterministic checks, and the Concierge assembles a specialist review when requested.
+Stage | Purpose | Typical evidence or decision
+----------------------------------------------
+1. Deal handover | Capture the sales-to-delivery context. | Opportunity reference, delivery owner, roles, commitments and delivery notes.
+2. Document collection | Assemble the required onboarding record set. | Executed MSA, SOW, order form, PO and DPA.
+3. Compliance and KYB | Check the structured compliance readiness state. | Compliance review and named compliance attestation; the demo score is synthetic.
+4. MSA/SOW validation | Compare captured contract facts with the playbook. | Liability cap multiple and counsel decision on deviations.
+5. Commercial and billing | Check PO and SOW alignment and capture finance review. | PO reference, match fact and finance sign-off.
+6. Mobilisation and access | Record implementation and access readiness. | Delivery owner readiness and named mobilisation attestation.
+7. Client kickoff | Reach a governed kickoff decision. | All deterministic blocks/reviews resolved and a successful Concierge run.
+8. Hypercare to first value | Track the post-kickoff outcome. | First-value milestone and lessons can be recorded as lifecycle sign-offs.
+
+The application stores the case stage and status. Kickoff approval advances the case to stage 8 and sets status to kickoff_approved. The current server-side approval endpoint checks the check dispositions and the existence of a successful Concierge run. The UI presents sign-offs in sequence, but the endpoint does not currently require specific sign-off records or validate their order as part of approval. Treat sign-offs as recorded attestations rather than identity-verified authorization.
+
+2. The browser workspace
+------------------------
+The interface is a single-page application, not a multi-page frontend framework. The navigation and page renderers live in frontend/index.html; JavaScript calls the FastAPI endpoints and updates page content in place.
+Workspace | What it does
+------------------------
+Portfolio | Lists cases with client, segment, TCV, stage, check counts, agent-run state and owner. It is the entry point for opening a case or creating a new one.
+Case workspace | Shows a selected case, its readiness counts, evidence records, structured facts and file attachments; it supports adding records, uploading, downloading or removing evidence and running checks.
+Concierge review | Starts a real network run, shows the recorded answer and message trace, and presents the private-data boundary preview. It also displays illustrative time/savings estimates.
+Lifecycle board | Shows the eight-stage progress and provides forms to record named gate attestations. It exposes the kickoff readiness summary and approval action.
+Human review | Lets a named reviewer mark a REVIEW check as cleared, failed or hold and add a rationale. A hold does not clear the check.
+Audit history | Displays recorded actions for the selected case, with newest items first.
+Agent network | Visualizes the Concierge and eight specialist branches plus the coded tools.
+Architecture | Explains the current local two-process deployment and the remote LLM provider connection.
+Settings and API keys | Selects provider/model and base URL, saves provider configuration locally, tests a real minimal model request and displays provider usage when available.
+
+The app can provide sample onboarding documents for the five evidence kinds. These are fictional examples intended to help populate the demo; they are not parsed automatically into evidence facts.
+
+3. Case and evidence data
+-------------------------
+
+Case intake
+-----------
+A case stores client name, segment, total contract value as text, opportunity reference, delivery owner, stakeholder roles/names, commercial commitments, stage, status and timestamps. Stakeholders and commitments are JSON in SQLite. The seeded demo clients are Northwind Logistics, Orion Retail Group and Helix Bank plc.
+
+Evidence records
+----------------
+Evidence is represented as structured rows rather than extracted contract text. Each row has a kind, label, optional facts object, and optional attachment metadata. The required kinds are msa, sow, order_form, po and dpa. For example, the MSA facts can include liability_cap_multiple; PO facts can include po_number and po_matches_sow; DPA facts can include signed and residency.
+Uploads accept PDF, DOC, DOCX and UTF-8 TXT files up to 15 MB. The server stores the uploaded bytes under data/uploads/, associates the record with the original filename, file size and SHA-256 hash, and permits the user to download or remove the attachment. A user can also add an evidence record manually without a file.
+A file upload does not trigger OCR, text extraction, malware scanning, signature validation or classification. The app does not infer the structured facts from the file. A user must capture facts in the evidence form for the deterministic checks to use them.
+
+Evidence change behavior
+------------------------
+Adding, deleting or removing a file from an evidence row invalidates existing checks, agent runs and sign-offs for that case. The intent is to prevent an old review from being treated as current after its evidence base changes. The app records an invalidation event in audit history, and checks must be run again. A new Concierge review is also needed to satisfy the successful-run requirement after such invalidation.
+
+4. Deterministic checks and approval logic
+------------------------------------------
+src/onramp_neuro_san/checks.py applies ordinary Python rules to structured evidence facts. It does not call a model. Each result is PASS, REVIEW or BLOCK. The decision is deterministic for a given evidence set.
+Check | PASS | REVIEW | BLOCK
+-----------------------------
+Required document presence | A record exists for the required kind. | Not applicable to presence itself. | One of the five required kinds is absent.
+MSA liability cap | Captured cap is at or below 1.0x annual fees. | Cap is missing, is above 1.0x through 1.5x, or exceeds the 1.5x fallback; counsel must decide. | No MSA record exists.
+Data-breach indemnity | No uncapped indemnity fact is recorded. | An uncapped data-breach indemnity is recorded. | No separate block is created for this fact.
+PO and SOW match | po_matches_sow is true. | It is false or not captured; finance review is needed. | No PO record exists.
+DPA signature and residency | DPA facts include signed=true and a residency value. | DPA exists but signature or residency is missing. | No DPA record exists; the required-document check blocks.
+
+The required-document check and contract/PO checks are separate. A missing MSA or PO therefore creates a BLOCK for missing evidence and also a BLOCK on the related evaluation check. A missing structured fact on a present record generally creates REVIEW, so missing information is not silently treated as compliant.
+
+Human dispositions
+------------------
+* Cleared: records that a named reviewer accepted a REVIEW outcome with a rationale; this resolves that review for the gate summary.
+* Hold: records that the issue remains open; it does not clear the review.
+* Failed: records an adverse disposition and remains a gate failure until evidence is corrected and checks are rerun.
+* BLOCK results are not cleared by a disposition. The underlying missing evidence must be added, then checks rerun.
+
+Kickoff gate
+------------
+The API recomputes a summary from stored checks and the latest successful run. Approval is refused with an HTTP 409 response if any block is unresolved, any review lacks a cleared disposition, any check is marked failed, or there is no successful real Concierge run. If those conditions pass, the case moves to stage 8 and status kickoff_approved. The summary does not validate lifecycle sign-off presence/order, reviewer identity, or user authentication.
+
+5. Concierge review and agent network
+-------------------------------------
+
+The review request
+------------------
+When the user runs a Concierge review, the API loads the case and evidence, builds a compact natural-language prompt, and constructs a separate sly_data object. The prompt states the closed-won context, which document kinds are present, captured MSA cap or PO information, and asks the network to identify kickoff blockers and outstanding human approvals. It does not pass uploaded file contents or perform document extraction.
+The API key is assembled separately under sly_data.llm_config. The review payload also contains structured sly_data fields: case ID, a numeric contract value parsed from TCV when possible, and an entity screening record. One important detail in the current code is that the natural-language prompt itself includes the client name, opportunity reference and TCV text. Therefore the prompt is not a redacted case summary, and those values are sent as part of the remote model request. The code keeps the API key out of prompt text and uses sly_data for the screening record and key; this is a software data-flow choice, not encryption or a guarantee about provider handling.
+
+Concierge and eight specialists
+-------------------------------
+Agent | Responsibility in the network
+-------------------------------------
+Onboarding Concierge | Front-man. Decomposes the request, delegates through AAOSA, reconciles specialist responses and summarizes readiness, blockers and human decisions.
+Deal handover | Carries sales-to-delivery facts, commitments, products and stakeholders; flags promises not reflected in delivery evidence.
+Document intelligence | Tracks the five-document checklist and hands contract/compliance facts to the relevant specialists.
+Compliance | Requests a deterministic score for an opaque entity/UBO reference and routes high scores to a Compliance Officer.
+Legal MSA validator | Compares the captured liability cap with standard/fallback thresholds and surfaces counsel decisions.
+Commercial setup | Reviews PO and SOW reconciliation and surfaces finance approval requirements.
+Delivery mobilisation | Frames delivery phases, resourcing, risk log, kickoff agenda and a 30-60-90 day plan subject to upstream gates.
+Access provisioning | Describes least-privilege access steps and leaves privileged/production decisions with humans.
+Client communications | Drafts onboarding communications from established facts; the account owner sends them.
+
+The agents are HOCON-defined Neuro-SAN participants using the AAOSA determine/requirements/fulfil pattern. The model coordinates language and delegates; coded tools perform the exact deterministic sub-tasks. A successful run stores the answer, provider/model, duration and trace. A failed call is also stored as an error with the prompt/error details, and it cannot satisfy the approval requirement.
+
+Four coded tools
+----------------
+Tool | Implemented behavior | Important boundary
+------------------------------------------------
+checklist_tracker | Compares present evidence kinds with the five required kinds and returns completeness and missing labels. | It checks metadata/kinds, not the content of uploaded files.
+compliance_screen | Returns a reproducible score for an opaque reference; scores at or above 0.85 route to human review. | The current score is derived from a SHA-256 hash for demo determinism. It is not a sanctions, PEP or KYB database lookup.
+clause_playbook | Classifies a cap at <=1.0x as standard, <=1.5x as fallback, and above 1.5x as beyond fallback; can return a coarse exposure band. | It compares the structured cap supplied to it; it does not read or interpret an MSA file.
+po_reconciler | Passes if captured PO/SOW match is true, returns review if false or unknown, and blocks if no PO number is supplied. | It relies on facts supplied by the user/model call; it does not query ERP or SOW documents.
+
+
+Real model call and failure handling
+------------------------------------
+src/onramp_neuro_san/neuro_client.py creates a Neuro-SAN HTTP session and consumes streaming_chat responses using the maximal trace filter. It records message text, message types, origin labels and structure as a trace. The app does not provide a dummy answer if the key, agent server, network or model call fails. It records the failed run and returns an error response. Health checks verify that the agent network is reachable but do not make a full model inference call; Settings has a separate real test-connection action.
+
+6. Architecture and request lifecycle
+-------------------------------------
+Component | Role | Local address or location
+--------------------------------------------
+Browser | Loads the single-page UI and sends JSON/form-data requests. | http://127.0.0.1:8000
+FastAPI app | Serves static files and API routes; enforces deterministic rules; stores cases and runs the Neuro-SAN client. | Port 8000
+Neuro-SAN server | Loads the HOCON manifest and agent tools; exposes the served network. | Port 8080
+SQLite and upload folders | Persist case records, structured evidence, checks, sign-offs, runs, settings and audit events; keep file bytes locally. | data/onramp.db and data/uploads/
+Remote LLM provider | Performs the language model part of the real network run using the configured model and key. | OpenRouter API in the current configuration
+
+1. The browser sends a case or evidence action to FastAPI.
+2. For checks, FastAPI reads evidence rows and runs local Python logic; it persists fresh results and the audit event.
+3. For a Concierge review, FastAPI builds the prompt and private sly_data payload, then calls the Neuro-SAN server over HTTP.
+4. The Concierge model delegates work to specialist agents; specialists call coded tools for checklist, demo screening, clause classification and PO matching.
+5. The network returns streaming messages; ONRAMP captures the trace and final answer in SQLite for inspection.
+6. For kickoff, the FastAPI tier checks stored check dispositions and a successful run. If the server-side conditions pass, it advances the case.
+The two local processes are started separately. startup.bat is the convenience launcher: it opens a Neuro-SAN helper window, waits, opens an app helper window, then attempts to open localhost. run_neuro_san.ps1 starts only the agent process. shutdown.bat is provided to stop the local services. The application can also be launched with the explicit commands described in the run section below.
+
+7. Data storage, audit, and privacy boundaries
+----------------------------------------------
+
+SQLite tables
+-------------
+Table | What it stores
+----------------------
+cases | Client/deal fields, stage, status and timestamps.
+evidence | Evidence kind, label, structured facts and optional file metadata/hash.
+checks | Deterministic check result, detail, disposition, reviewer and rationale.
+signoffs | Gate name, reviewer name, note and timestamp.
+agent_runs | Provider/model, status, prompt, answer, trace, error and elapsed time.
+audit | Actor, action, JSON detail, case reference and timestamp.
+app_settings | ROI assumptions such as hourly rate and human-baseline minutes.
+
+The database is local and stored as one SQLite file. The audit interface is append-oriented: normal API actions insert events, and the API exposes reads rather than an audit edit operation. It is not tamper-proof or immutable against direct access to the local file or machine.
+
+Privacy and security limits
+---------------------------
+* Provider keys live in the ignored .env file. The settings API returns configured flags and masked previews rather than the clear key. Keep .env out of source control.
+* The key is supplied in the private sly_data structure for the Neuro-SAN LLM adapter and is not inserted into the prompt text. However, the current review prompt includes the client name, opportunity reference and TCV. Successful and failed agent-run records store the prompt and trace in SQLite, so those prompt values persist locally and are included in the remote model request.
+* The sly_data channel is a separation mechanism in the framework, not a substitute for encryption, authentication, provider terms review or a secret-management system. Local logs, processes and provider-side request handling are separate trust boundaries.
+* The local database and uploaded files are not encrypted or access-controlled by the application. The local demo has no user authentication or authorization.
+* Uploads are size/type filtered but are not malware-scanned, OCR-processed, text-extracted or signature-verified.
+* Names and opportunity references used in the demo are fictional. Do not place real client personal, tax, banking or confidential contract data in this local build.
+
+8. ROI view
+-----------
+The Concierge page records measured wall-clock duration for each successful agent run. It compares that AI duration against an editable assumed human baseline and hourly rate. Defaults in the database are 240 human minutes and USD 20 per hour. The calculation reports estimated saved minutes and cost avoided; it does not measure actual human handling time, account for token/provider charges, or establish realized savings. The UI labels this an illustrative aid rather than a measured productivity result.
+
+9. API map
+----------
+Route | Purpose
+---------------
+GET /api/health | App status, current provider/model/key configured flag and Neuro-SAN reachability.
+GET /api/cases; POST /api/cases | List portfolio cases or create a closed-won case.
+GET /api/cases/{id} | Load case with evidence, checks, sign-offs, agent runs and readiness summary.
+POST /api/cases/{id}/evidence | Add a structured evidence record.
+POST /api/cases/{id}/uploads | Upload an attachment with type/size checks and SHA-256 metadata.
+GET /api/evidence/{id}/download | Download an attached source file.
+DELETE /api/evidence/{id}; DELETE /api/evidence/{id}/file | Delete the evidence record or remove only its file; invalidate dependent review state.
+POST /api/cases/{id}/checks | Run deterministic evidence checks and replace stored results.
+POST /api/checks/{id}/disposition | Record a named review disposition and rationale.
+POST /api/cases/{id}/review | Run the real Neuro-SAN network and persist its answer/trace or failure.
+POST /api/cases/{id}/signoffs | Record a named gate attestation.
+POST /api/cases/{id}/approve-kickoff | Apply the server-side check and successful-run gate; advance to stage 8.
+GET /api/cases/{id}/audit | Read the case audit history.
+GET/POST /api/settings; POST /api/settings/test; GET /api/settings/credits | Read/save provider selection, test a real model request and retrieve provider usage where supported.
+GET/POST /api/roi; GET /api/roi/summary | Read/update assumptions and calculate illustrative ROI.
+GET /api/samples; GET /api/samples/{kind}/download | List and download fictional starter evidence files.
+
+
+10. Running the project
+-----------------------
+The repository targets Python 3.12 and pins Neuro-SAN Studio 0.4.2. Dependencies are defined by pyproject.toml and uv.lock. From the project root on Windows, the normal setup and launch flow is:
+uv python install 3.12
+$env:UV_CACHE_DIR = Join-Path (Get-Location).Path '.uv-cache'   # optional if the default uv cache is not writable
+uv sync --extra dev --link-mode copy
+$env:AGENT_MANIFEST_FILE = (Resolve-Path .\registries\manifest.hocon).Path
+$env:AGENT_TOOL_PATH = (Resolve-Path .\src).Path
+uv run ns run --server-only --server-host 127.0.0.1 --server-http-port 8080
+uv run uvicorn onramp_neuro_san.server.app:app --host 127.0.0.1 --port 8000
+The two uv run server commands belong in separate terminals. Then open http://127.0.0.1:8000. The health check is http://127.0.0.1:8000/api/health and the FastAPI docs are http://127.0.0.1:8000/docs. Configure the OpenRouter key through Settings or the local .env file before requesting a model review. The network server must also be reachable for the Concierge run.
+The repo has tests for API behavior, deterministic checks, coded tools and ROI. This guide inventories those assets but does not claim a fresh test run as part of its source analysis.
+
+11. Demo scenarios
+------------------
+Starter case | Seeded facts | What the scenario illustrates
+-----------------------------------------------------------
+Northwind Logistics | Complete five-document set; 1.0x MSA cap; matching PO; signed DPA with UK residency. | Baseline case with a complete evidence set and standard captured terms.
+Orion Retail Group | 3.0x MSA cap; uncapped data-breach indemnity; PO/SOW mismatch; dedicated team commitment not in SOW. | Counsel/finance reviews and a sales commitment that requires delivery attention.
+Helix Bank plc | Required MSA/SOW/order/PO records are present; DPA is deliberately missing. | A missing required record produces a BLOCK until DPA evidence is added and checks rerun.
+
+Seeded evidence is structured fixture data. It does not imply that live counterparties, compliance lists, contracts or enterprise systems were queried.
+
+12. What is implemented and what remains outside scope
+------------------------------------------------------
+
+Implemented in this build
+-------------------------
+* Portfolio, case intake/workspace, structured evidence records and local file attachments with SHA-256 fingerprints.
+* Deterministic presence, liability-cap, PO/SOW and DPA checks with human disposition for REVIEW results.
+* Eight-stage lifecycle display, named sign-off capture, kickoff readiness and server-side approval checks.
+* A real Neuro-SAN Concierge network call with eight delegated specialists, four deterministic tools, trace capture and recorded failures.
+* OpenRouter and other provider configuration options, masked key status, connection testing and OpenRouter usage lookup where available.
+* SQLite storage, action history, fictional starter cases and downloadable sample evidence.
+* Illustrative ROI calculation based on measured agent time and editable assumptions.
+
+Not implemented as live enterprise integrations
+-----------------------------------------------
+* CRM or Agentforce closed-won handoff; registry/KYB/sanctions/PEP lookup; OCR or contract extraction; malware scanning; signature verification.
+* Automated legal clause extraction, ERP billing creation, project provisioning, SSO/account creation, client email sending or automatic kickoff invitations.
+* Authentication, role-based access control, verified reviewer identities, encrypted local storage, immutable audit retention or a production hosting/security model.
+* Production enforcement of every lifecycle sign-off as an approval prerequisite. The present kickoff endpoint checks deterministic results and successful agent-run presence only.
+The UI and agent instructions can describe the actions a future integrated workflow should take, but those descriptions must not be confused with completed external actions. The current concrete runtime is two local Python processes, local SQLite/files, and the selected remote model provider.
+
+13. Source code map
+-------------------
+Path | Responsibility
+---------------------
+frontend/index.html | All single-page UI markup, styling, navigation, page renderers and browser-side API calls.
+src/onramp_neuro_san/server/app.py | FastAPI routes, upload validation, check/review orchestration, kickoff gate and static hosting.
+src/onramp_neuro_san/server/review.py | Builds the Concierge prompt and private case sly_data payload.
+src/onramp_neuro_san/server/samples.py | Supplies fictional sample documents.
+src/onramp_neuro_san/checks.py | Pure-Python evidence rules and readiness summary.
+src/onramp_neuro_san/db.py | SQLite schema, seed records, data access, invalidation, audit and ROI calculations.
+src/onramp_neuro_san/neuro_client.py | Neuro-SAN session, streaming chat, trace capture and reachability probe.
+src/onramp_neuro_san/provider.py | Provider selection, .env settings, HOCON llm_config rewrite, sly_data key injection and test call.
+src/onramp_neuro_san/config.py | Project paths, .env loading, upload constraints and Neuro-SAN connection settings.
+src/onramp/checklist_tracker.py | Deterministic required-document checklist coded tool.
+src/onramp/compliance_screen.py | Deterministic demo score coded tool; no live screening provider.
+src/onramp/clause_playbook.py | Liability-cap classifier and coarse exposure bands.
+src/onramp/po_reconciler.py | Deterministic PO/SOW match result.
+registries/onramp/onramp_onboarding.hocon | Concierge, specialist instructions, tool definitions and provider-generated LLM configuration block.
+registries/manifest.hocon and registries/aaosa.hocon | Agent network manifest and AAOSA configuration.
+startup.bat, _run_app.bat, _run_neurosan.bat, run_neuro_san.ps1, shutdown.bat | Windows service startup, helper launchers and shutdown workflow.
+tests/ | Automated tests for API, evidence checks, coded tools and ROI calculations.
+README.md, docs/ARCHITECTURE.md, docs/SESSION_HANDOVER.md | Setup, current architecture and prior development handover notes.
+
+
+A short end-to-end walkthrough
+------------------------------
+1. Open Portfolio and select Northwind Logistics or create a fictional closed-won case.
+2. In Case workspace, inspect or add the five evidence records and capture structured facts such as cap multiple, PO match and DPA residency.
+3. Run deterministic checks. Fix BLOCK items by changing the evidence set; have named reviewers clear REVIEW items with a rationale.
+4. Run Concierge review while both services are running and OpenRouter is configured. Read the final answer and trace; a failure remains visible and cannot count as a successful run.
+5. Use Lifecycle board to record the human attestations expected by the demo workflow. Remember the current API does not make their presence a server-side kickoff prerequisite.
+6. Approve kickoff only after the server reports no unresolved blocks, open reviews or failed checks and has a successful real Concierge run. The case advances to Hypercare to first value.
+7. Record first-value and lessons as appropriate, then inspect Audit history for the case's recorded actions.
